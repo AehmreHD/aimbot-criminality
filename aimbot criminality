@@ -1087,4 +1087,188 @@ ResetConfigBtn.MouseButton1Click:Connect(function()
     
     local currentAccent = AccentPresets[Settings.AccentColorIndex]
     Styles.Accent = currentAccent
- ... (9 KB left)
+    FOVCircle.Color = currentAccent
+    TargetDot.Color = currentAccent
+    TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
+    TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
+    TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
+    TweenObj(ShortcutTitle, { TextColor3 = currentAccent }, 0.25)
+    TweenObj(SubTitle, { TextColor3 = currentAccent }, 0.25)
+    for _, tData in pairs(Tabs) do
+        tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
+        tData.Page.ScrollBarImageColor3 = currentAccent
+    end
+
+    SystemLogEvent("Engine Reverted to Factory Configuration.")
+end)
+
+local CopyUserBtn = Instance.new("TextButton", SettPage)
+CopyUserBtn.Size = UDim2.new(0.94, 0, 0, 36)
+CopyUserBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+CopyUserBtn.Font = Enum.Font.GothamBold
+CopyUserBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CopyUserBtn.Text = "COPY C0RROSION'S DISCORD PROFILE"
+CopyUserBtn.TextSize = 10
+CopyUserBtn.BorderSizePixel = 0
+Instance.new("UICorner", CopyUserBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(CopyUserBtn, Color3.fromRGB(88, 101, 242), Color3.fromRGB(105, 118, 255))
+
+CopyUserBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        local discordUrl = "https://discord.com/users/1344951028516257835"
+        if setclipboard then setclipboard(discordUrl) elseif toclipboard then toclipboard(discordUrl) end
+        CopyUserBtn.Text = "COPIED URL TO CLIPBOARD!"
+        task.wait(1.5)
+        CopyUserBtn.Text = "COPY C0RROSION'S DISCORD PROFILE"
+    end)
+end)
+
+local KillEngineBtn = Instance.new("TextButton", SettPage)
+KillEngineBtn.Size = UDim2.new(0.94, 0, 0, 36)
+KillEngineBtn.BackgroundColor3 = Color3.fromRGB(45, 20, 25)
+KillEngineBtn.Font = Enum.Font.GothamBold
+KillEngineBtn.TextColor3 = Color3.fromRGB(240, 110, 110)
+KillEngineBtn.Text = "UNLOAD ENGINE MATRIX AND WIPE GUI"
+KillEngineBtn.TextSize = 10
+KillEngineBtn.BorderSizePixel = 0
+Instance.new("UICorner", KillEngineBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(60, 25, 30))
+
+KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
+
+--=======================================================================================
+--// PREMIUM DETACHED DISCORD PROMPT ENGINE MODULE 
+--=======================================================================================
+local DiscordModal = Instance.new("Frame", MainFrame)
+DiscordModal.Name = "DiscordLauncherPrompt"
+DiscordModal.AnchorPoint = Vector2.new(0.5, 0.5) 
+DiscordModal.Size = UDim2.new(0, 370, 0, 195)
+DiscordModal.Position = UDim2.new(0.5, 0, 0.5, 0) 
+DiscordModal.BackgroundColor3 = Styles.Bg
+DiscordModal.BorderSizePixel = 0
+DiscordModal.ZIndex = 10 
+DiscordModal.ClipsDescendants = true 
+Instance.new("UICorner", DiscordModal).CornerRadius = UDim.new(0, 10)
+
+local ModalStroke = Instance.new("UIStroke", DiscordModal)
+ModalStroke.Thickness = 1.5
+ModalStroke.Color = Styles.Border
+
+local BlueBar = Instance.new("Frame", DiscordModal)
+BlueBar.Size = UDim2.new(0, 3, 0, 32)
+BlueBar.Position = UDim2.new(0, 14, 0, 14)
+BlueBar.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+BlueBar.BorderSizePixel = 0
+Instance.new("UICorner", BlueBar).CornerRadius = UDim.new(0, 2)
+
+local PromptTitle = Instance.new("TextLabel", DiscordModal)
+PromptTitle.Size = UDim2.new(0.5, 0, 0, 18)
+PromptTitle.Position = UDim2.new(0, 24, 0, 12)
+PromptTitle.BackgroundTransparency = 1
+PromptTitle.Text = "c0rrosion"
+PromptTitle.Font = Enum.Font.GothamBold
+PromptTitle.TextSize = 14
+PromptTitle.TextColor3 = Styles.TextMain
+PromptTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local PromptSub = Instance.new("TextLabel", DiscordModal)
+PromptSub.Size = UDim2.new(0.5, 0, 0, 14)
+PromptSub.Position = UDim2.new(0, 24, 0, 30)
+PromptSub.BackgroundTransparency = 1
+PromptSub.Text = "Cmon Join"
+PromptSub.Font = Enum.Font.GothamSemibold
+PromptSub.TextSize = 10
+PromptSub.TextColor3 = Styles.TextDark
+PromptSub.TextXAlignment = Enum.TextXAlignment.Left
+
+local DirectInviteBadge = Instance.new("TextButton", DiscordModal)
+DirectInviteBadge.Size = UDim2.new(0, 56, 0, 22)
+DirectInviteBadge.Position = UDim2.new(1, -70, 0, 16)
+DirectInviteBadge.BackgroundColor3 = Color3.fromRGB(30, 31, 40)
+DirectInviteBadge.Font = Enum.Font.GothamBold
+DirectInviteBadge.Text = "Invite"
+DirectInviteBadge.TextColor3 = Color3.fromRGB(240, 240, 245)
+DirectInviteBadge.TextSize = 10
+Instance.new("UICorner", DirectInviteBadge).CornerRadius = UDim.new(0, 5)
+HookButtonAnimations(DirectInviteBadge, Color3.fromRGB(30, 31, 40), Color3.fromRGB(40, 42, 54))
+
+local PromptDesc = Instance.new("TextLabel", DiscordModal)
+PromptDesc.Size = UDim2.new(1, -28, 0, 32)
+PromptDesc.Position = UDim2.new(0, 14, 0, 56)
+PromptDesc.BackgroundTransparency = 1
+PromptDesc.Text = "Join the Discord for changelogs, help, and script announcements."
+PromptDesc.Font = Enum.Font.GothamSemibold
+PromptDesc.TextSize = 11
+PromptDesc.TextColor3 = Styles.TextDark
+PromptDesc.TextWrapped = true
+PromptDesc.TextXAlignment = Enum.TextXAlignment.Left
+
+local LinkFieldFrame = Instance.new("Frame", DiscordModal)
+LinkFieldFrame.Size = UDim2.new(1, -28, 0, 34)
+LinkFieldFrame.Position = UDim2.new(0, 14, 0, 96)
+LinkFieldFrame.BackgroundColor3 = Color3.fromRGB(20, 21, 27)
+LinkFieldFrame.BorderSizePixel = 0
+Instance.new("UICorner", LinkFieldFrame).CornerRadius = UDim.new(0, 5)
+Instance.new("UIStroke", LinkFieldFrame).Color = Styles.Border
+
+local LinkStringLabel = Instance.new("TextLabel", LinkFieldFrame)
+LinkStringLabel.Size = UDim2.new(1, -20, 1, 0)
+LinkStringLabel.Position = UDim2.new(0, 10, 0, 0)
+LinkStringLabel.BackgroundTransparency = 1
+LinkStringLabel.Text = "https://discord.gg/8jSF8vSvbJ"
+LinkStringLabel.Font = Enum.Font.Gotham
+LinkStringLabel.TextSize = 11
+LinkStringLabel.TextColor3 = Styles.TextMain
+LinkStringLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local ReadyLabel = Instance.new("TextLabel", DiscordModal)
+ReadyLabel.Size = UDim2.new(1, 0, 0, 14)
+ReadyLabel.Position = UDim2.new(0, 0, 0, 131)
+ReadyLabel.BackgroundTransparency = 1
+ReadyLabel.Text = "Ready when you are"
+ReadyLabel.Font = Enum.Font.GothamSemibold
+ReadyLabel.TextSize = 10
+ReadyLabel.TextColor3 = Styles.TextDark
+ReadyLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+local ActionCopyBtn = Instance.new("TextButton", DiscordModal)
+ActionCopyBtn.Size = UDim2.new(0, 164, 0, 34)
+ActionCopyBtn.Position = UDim2.new(0, 14, 0, 148)
+ActionCopyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+ActionCopyBtn.Font = Enum.Font.GothamBold
+ActionCopyBtn.Text = "Copy Discord"
+ActionCopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ActionCopyBtn.TextSize = 11
+Instance.new("UICorner", ActionCopyBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(ActionCopyBtn, Color3.fromRGB(88, 101, 242), Color3.fromRGB(105, 118, 255))
+
+local ActionDismissBtn = Instance.new("TextButton", DiscordModal)
+ActionDismissBtn.Size = UDim2.new(0, 164, 0, 34)
+ActionDismissBtn.Position = UDim2.new(1, -178, 0, 148)
+ActionDismissBtn.BackgroundColor3 = Color3.fromRGB(28, 29, 38)
+ActionDismissBtn.Font = Enum.Font.GothamBold
+ActionDismissBtn.Text = "Maybe Later"
+ActionDismissBtn.TextColor3 = Styles.TextMain
+ActionDismissBtn.TextSize = 11
+Instance.new("UICorner", ActionDismissBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UIStroke", ActionDismissBtn).Color = Styles.Border
+HookButtonAnimations(ActionDismissBtn, Color3.fromRGB(28, 29, 38), Color3.fromRGB(36, 37, 46))
+
+local function FinalizeLauncherSequence(executeCopy)
+    if executeCopy then
+        pcall(function()
+            if setclipboard then setclipboard("https://discord.gg/8jSF8vSvbJ")
+            elseif toclipboard then toclipboard("https://discord.gg/8jSF8vSvbJ") end
+        end)
+    end
+    
+    task.spawn(function()
+        TweenObj(ModalStroke, { Transparency = 1 }, 0.15)
+        local modalClose = TweenObj(DiscordModal, {Size = UDim2.new(0, 0, 0, 0)}, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        modalClose.Completed:Wait()
+        DiscordModal:Destroy()
+    end)
+end
+
+ActionCopyBtn.MouseButton1Click:Connect(function() FinalizeLauncherSequence(true) end)
+ActionDismissBtn.MouseButton1Click:Connect(function() FinalizeLauncherSequence(false) end)
