@@ -247,9 +247,51 @@ env[CurrentScriptID] = UniversalDestruct
 local function GetClosestPlayer()
     local MaximumDistance = Settings.MaxDistance
     local TargetPlayer = nil
-    
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
-    local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
+
+    local character = LocalPlayer.Character
+    if not character then return nil end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local MyPos = root.Position
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local targetCharacter = player.Character
+
+            if targetCharacter then
+                local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+                local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+
+                if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+                    if player.Team ~= nil and LocalPlayer.Team ~= nil then
+                        if player.Team == LocalPlayer.Team or player.TeamColor == LocalPlayer.TeamColor then
+                            continue
+                        end
+                    end
+
+                    local Distance = (targetRoot.Position - MyPos).Magnitude
+
+                    if Distance < MaximumDistance then
+                        if Settings.WallCheck then
+                            local parts = Camera:GetPartsObscuringTarget(
+                                {targetRoot.Position},
+                                {character, targetCharacter}
+                            )
+
+                            if #parts > 0 then
+                                continue
+                            end
+                        end
+
+                        MaximumDistance = Distance
+                        TargetPlayer = player
+                    end
+                end
+            end
+        end
+    end
 
     return TargetPlayer
 end
