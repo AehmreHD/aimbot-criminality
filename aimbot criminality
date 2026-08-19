@@ -144,6 +144,80 @@ local function WispAllESPRemnants()
     end
 end
 
+local function UpdatePlayerESP(player)
+    if player == LocalPlayer then return end
+
+    local character = player.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local highlight = character:FindFirstChild("TestESP_Highlight")
+
+    if Settings.Enabled and Settings.ESPEnabled and humanoid and humanoid.Health > 0 then
+        if not highlight then
+            highlight = Instance.new("Highlight")
+            highlight.Name = "TestESP_Highlight"
+            highlight.OutlineTransparency = 0.2
+            highlight.Parent = character
+        end
+
+        local col = player.TeamColor and player.TeamColor.Color or Styles.Accent
+
+        if highlight.FillTransparency ~= Settings.ESPTransparency then
+            highlight.FillTransparency = Settings.ESPTransparency
+        end
+
+        if highlight.FillColor ~= col then
+            highlight.FillColor = col
+        end
+
+        if highlight.OutlineColor ~= col then
+            highlight.OutlineColor = col
+        end
+    else
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+end
+
+local function SetupESPPlayer(player)
+    if player == LocalPlayer then return end
+
+    local function CharacterAdded(character)
+        local humanoid = character:WaitForChild("Humanoid", 10)
+        if not humanoid then return end
+
+        UpdatePlayerESP(player)
+
+        SafeConnect(humanoid.HealthChanged, function()
+            UpdatePlayerESP(player)
+        end)
+    end
+
+    if player.Character then
+        task.spawn(CharacterAdded, player.Character)
+    end
+
+    SafeConnect(player.CharacterAdded, CharacterAdded)
+
+    SafeConnect(player:GetPropertyChangedSignal("TeamColor"), function()
+        UpdatePlayerESP(player)
+    end)
+end
+
+local function RefreshAllESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        UpdatePlayerESP(player)
+    end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    SetupESPPlayer(player)
+end
+
+SafeConnect(Players.PlayerAdded, SetupESPPlayer)
+
 local function ControlClick(press)
     if press then
         if mouse1press then mouse1press() 
@@ -177,30 +251,6 @@ local function GetClosestPlayer()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local MyPos = LocalPlayer.Character.HumanoidRootPart.Position
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local targetHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            if targetHumanoid and targetHumanoid.Health > 0 then
-                
-                if player.Team ~= nil and LocalPlayer.Team ~= nil then
-                    if player.Team == LocalPlayer.Team or player.TeamColor == LocalPlayer.TeamColor then continue end
-                end
-                
-                local TargetPos = player.Character.HumanoidRootPart.Position
-                local Distance = (TargetPos - MyPos).Magnitude
-                
-                if Distance < MaximumDistance then
-                    if Settings.WallCheck then
-                        local Parts = Camera:GetPartsObscuringTarget({TargetPos}, {LocalPlayer.Character, player.Character})
-                        if #Parts > 0 then continue end
-                    end
-                    
-                    MaximumDistance = Distance
-                    TargetPlayer = player
-                end
-            end
-        end
-    end
     return TargetPlayer
 end
 
@@ -816,8 +866,13 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
     ToggleHousing.MouseButton1Click:Connect(function()
         Settings[configKey] = not Settings[configKey]
         local current = Settings[configKey]
+    
         TweenObj(ToggleHousing, { BackgroundColor3 = current and Styles.Accent or Color3.fromRGB(40, 42, 52) }, 0.25, Enum.EasingStyle.Quint)
         TweenObj(ToggleCore, { Position = current and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7) }, 0.25, Enum.EasingStyle.Quint)
+    
+        if configKey == "ESPEnabled" or configKey == "Enabled" then
+            RefreshAllESP()
+        end
     end)
 
     -- Hook for Defaults System Reset Update
@@ -974,7 +1029,9 @@ AddDashboardSlider(AimPage, "MaxDistance", "Target Maximum Distance", 50, 5000, 
 AddDashboardButton(VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
 AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
 AddDashboardSlider(VisPage, "FOVRadius", "Crosshair Threat Radius", 20, 500, "★ Optimal Placement: Low-Medium (Zero-Lag Filtering) (120)", "Adjusts the width scale boundary of your screen targeting frame ring.")
-AddDashboardSlider(VisPage, "ESPTransparency", "ESP Elements Opacity Alpha", 0.0, 1.0, "★ Optimal Placement: Medium High Density Fill (0.4)", "Modulates internal card outline overlay drawing opacity visibility scales.")
+AddDashboardSlider(VisPage, "ESPTransparency", "ESP Elements Opacity Alpha", 0.0, 1.0, "★ Optimal Placement: Medium High Density Fill (0.4)", "Modulates internal card outline overlay drawing opacity visibility scales.", function()
+    RefreshAllESP()
+end)
 
 local BodyPartBtn = Instance.new("TextButton", CustPage)
 BodyPartBtn.Size = UDim2.new(0.94, 0, 0, 36)
