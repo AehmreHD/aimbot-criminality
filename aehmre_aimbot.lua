@@ -650,11 +650,34 @@ end)
 --// UI Allocation Elements
 local MainMenuUI = nil
 local ShortcutList = nil
+local KeybindCapture = nil
+local KeybindValueButtons = {}
+
+local function GetKeybindName(keyCode)
+	if not keyCode or keyCode == Enum.KeyCode.Unknown then
+		return "NONE"
+	end
+
+	return keyCode.Name
+end
+
+local function UpdateKeybindValueButtons()
+	for configKey, button in pairs(KeybindValueButtons) do
+		if button then
+			button.Text = GetKeybindName(Settings[configKey])
+		end
+	end
+end
 
 local function UpdateLeftPanelShortcuts()
 	if ShortcutList then
 		local statusText = Aiming and "ON" or "OFF"
-		ShortcutList.Text = string.format("[B] Aim Lock: %s\n[L] Toggle UI", statusText)
+		ShortcutList.Text = string.format(
+			"[%s] Aim Lock: %s\n[%s] Toggle UI",
+			GetKeybindName(Settings.AimKey),
+			statusText,
+			GetKeybindName(Settings.ToggleUiKey)
+		)
 	end
 end
 
@@ -680,7 +703,36 @@ local function HookButtonAnimations(btn, baseColor, hoverColor)
 end
 
 SafeConnect(UserInputService.InputBegan, function(input, processed)
+	if KeybindCapture then
+		if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode == Enum.KeyCode.Unknown then
+			return
+		end
+
+		local capture = KeybindCapture
+		KeybindCapture = nil
+
+		if input.KeyCode == Enum.KeyCode.Escape then
+			UpdateKeybindValueButtons()
+			return
+		end
+
+		local configKey = capture.ConfigKey
+		local otherConfigKey = configKey == "AimKey" and "ToggleUiKey" or "AimKey"
+		local previousKey = Settings[configKey]
+
+		if Settings[otherConfigKey] == input.KeyCode then
+			Settings[otherConfigKey] = previousKey
+		end
+
+		Settings[configKey] = input.KeyCode
+		UpdateKeybindValueButtons()
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent(string.format("%s changed to %s.", capture.DisplayName, GetKeybindName(input.KeyCode)))
+		return
+	end
+
 	if processed then return end
+
 	if AccessNoticeDismissed and input.KeyCode == Settings.AimKey then 
 		Aiming = not Aiming 
 		if not Aiming then ControlClick(false) end
@@ -1008,6 +1060,7 @@ local AimPage = RegisterTabContainerPage("Aim Lock")
 local VisPage = RegisterTabContainerPage("Visuals / ESP")
 local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
+local KeybindPage = RegisterTabContainerPage("Keybinds")
 local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 local SettPage = RegisterTabContainerPage("Settings")
 
@@ -1454,6 +1507,97 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 	end)
 end
 
+local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
+	local Card = Instance.new("Frame", parentPage)
+	Card.Size = UDim2.new(0.94, 0, 0, 58)
+	Card.BackgroundColor3 = Styles.CardBg
+	Card.BorderSizePixel = 0
+	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
+
+	local Stroke = Instance.new("UIStroke", Card)
+	Stroke.Color = Styles.Border
+
+	local TitleLabel = Instance.new("TextLabel", Card)
+	TitleLabel.Size = UDim2.new(0.62, 0, 0, 18)
+	TitleLabel.Position = UDim2.new(0.03, 0, 0, 9)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = displayTitle
+	TitleLabel.Font = Enum.Font.GothamSemibold
+	TitleLabel.TextSize = 12
+	TitleLabel.TextColor3 = Styles.TextMain
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DescLabel = Instance.new("TextLabel", Card)
+	DescLabel.Size = UDim2.new(0.62, 0, 0, 16)
+	DescLabel.Position = UDim2.new(0.03, 0, 0, 31)
+	DescLabel.BackgroundTransparency = 1
+	DescLabel.Text = desc
+	DescLabel.Font = Enum.Font.Gotham
+	DescLabel.TextSize = 9
+	DescLabel.TextColor3 = Styles.TextDark
+	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local ValueButton = Instance.new("TextButton", Card)
+	ValueButton.Size = UDim2.new(0, 82, 0, 30)
+	ValueButton.Position = UDim2.new(0.97, -82, 0.5, -15)
+	ValueButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+	ValueButton.BorderSizePixel = 0
+	ValueButton.Text = GetKeybindName(Settings[configKey])
+	ValueButton.Font = Enum.Font.GothamBold
+	ValueButton.TextSize = 11
+	ValueButton.TextColor3 = Styles.TextMain
+	ValueButton.AutoButtonColor = false
+	Instance.new("UICorner", ValueButton).CornerRadius = UDim.new(0, 5)
+
+	local ValueStroke = Instance.new("UIStroke", ValueButton)
+	ValueStroke.Color = Styles.Border
+
+	KeybindValueButtons[configKey] = ValueButton
+
+	Card.MouseEnter:Connect(function()
+		TweenObj(Stroke, { Color = Styles.Accent }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardHover }, 0.2)
+	end)
+
+	Card.MouseLeave:Connect(function()
+		TweenObj(Stroke, { Color = Styles.Border }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2)
+	end)
+
+	ValueButton.MouseEnter:Connect(function()
+		TweenObj(ValueStroke, { Color = Styles.Accent }, 0.15)
+	end)
+
+	ValueButton.MouseLeave:Connect(function()
+		if not KeybindCapture or KeybindCapture.ConfigKey ~= configKey then
+			TweenObj(ValueStroke, { Color = Styles.Border }, 0.15)
+		end
+	end)
+
+	ValueButton.MouseButton1Click:Connect(function()
+		if KeybindCapture then
+			UpdateKeybindValueButtons()
+		end
+
+		KeybindCapture = {
+			ConfigKey = configKey,
+			DisplayName = displayTitle
+		}
+
+		ValueButton.Text = ".."
+		TweenObj(ValueStroke, { Color = Styles.Accent }, 0.15)
+	end)
+
+	table.insert(UIUpdaters, function()
+		if KeybindCapture and KeybindCapture.ConfigKey == configKey then
+			KeybindCapture = nil
+		end
+
+		ValueButton.Text = GetKeybindName(Settings[configKey])
+		ValueStroke.Color = Styles.Border
+	end)
+end
+
 --// Map Interface Elements Across Target Tab Frames
 AddDashboardButton(AimPage, "Enabled", "System Master Processing", "★ Optimal Placement: Core Hub Active On Screen", "Enables global calculation thread loops across physics steps.")
 AddDashboardButton(AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
@@ -1528,6 +1672,9 @@ end)
 AddDashboardSlider(CustPage, "BorderThickness", "User Interface Structural Thickness", 1, 5, "★ Configuration Layer: Outer Boundary Vector Frame Line Scaling", "Alters the pixel width dimensions of all highlighted main outer boundaries.", function(val)
 	MainStroke.Thickness = val
 end)
+
+AddKeybindControl(KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
+AddKeybindControl(KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
@@ -1607,6 +1754,7 @@ local function FactoryResetSettings()
 		tData.Page.ScrollBarImageColor3 = currentAccent
 	end
 
+	UpdateKeybindValueButtons()
 	UpdateLeftPanelShortcuts()
 end
 
