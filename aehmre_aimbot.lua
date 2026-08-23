@@ -67,6 +67,8 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local IsTouchDevice = UserInputService.TouchEnabled
+local HasKeyboard = UserInputService.KeyboardEnabled
 
 pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
 for _, id in ipairs(LegacyIDs) do
@@ -388,6 +390,15 @@ local function IsTargetVisible(character, targetPart)
 	return HasLineOfSight(character, targetPart)
 end
 
+local function GetAimScreenPosition()
+	if IsTouchDevice then
+		local viewport = Camera.ViewportSize
+		return Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+	end
+
+	return UserInputService:GetMouseLocation()
+end
+
 local function GetClosestPlayer()
 	local localCharacter = LocalPlayer.Character
 	if not localCharacter then return nil end
@@ -395,7 +406,7 @@ local function GetClosestPlayer()
 	local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
 	if not localRoot then return nil end
 
-	local mousePosition = UserInputService:GetMouseLocation()
+	local mousePosition = GetAimScreenPosition()
 	local closestPlayer = nil
 	local closestScreenDistance = Settings.FOVRadius
 	local closestDebugDistance = Settings.FOVRadius
@@ -468,7 +479,7 @@ local function IsTargetValid(player)
 	local screenPosition, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
 	if not onScreen or screenPosition.Z <= 0 then return false end
 
-	local mousePosition = UserInputService:GetMouseLocation()
+	local mousePosition = GetAimScreenPosition()
 	local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
 	local screenDistance = (targetScreenPosition - mousePosition).Magnitude
 
@@ -506,7 +517,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			FPSDisplay.Visible = false
 		end
 
-		FOVCircle.Position = UserInputService:GetMouseLocation()
+		FOVCircle.Position = GetAimScreenPosition()
 
 		if AccessNoticeDismissed and Settings.Enabled and Aiming then
 			FOVCircle.Color = AimFOVColor
@@ -539,7 +550,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				local debugPos, debugOnScreen = Camera:WorldToScreenPoint(DebugTargetPart.Position)
 
 				if debugOnScreen and debugPos.Z > 0 then
-					local mousePosition = UserInputService:GetMouseLocation()
+					local mousePosition = GetAimScreenPosition()
 
 					WallDebugLine.From = mousePosition
 					WallDebugLine.To = Vector2.new(debugPos.X, debugPos.Y)
@@ -652,6 +663,11 @@ local MainMenuUI = nil
 local ShortcutList = nil
 local KeybindCapture = nil
 local KeybindValueButtons = {}
+local MobileControls = nil
+local MobileAimButton = nil
+local MobileMenuButton = nil
+local MainUIScale = nil
+local AuthUIScale = nil
 
 local function GetKeybindName(keyCode)
 	if not keyCode or keyCode == Enum.KeyCode.Unknown then
@@ -664,20 +680,78 @@ end
 local function UpdateKeybindValueButtons()
 	for configKey, button in pairs(KeybindValueButtons) do
 		if button then
-			button.Text = GetKeybindName(Settings[configKey])
+			if IsTouchDevice and not HasKeyboard then
+				button.Text = "PC ONLY"
+			else
+				button.Text = GetKeybindName(Settings[configKey])
+			end
 		end
+	end
+end
+
+local function UpdateMobileControlButtons()
+	if MobileAimButton then
+		MobileAimButton.Text = Aiming and "AIM\nON" or "AIM\nOFF"
+		MobileAimButton.BackgroundColor3 = Aiming and Styles.Accent or Color3.fromRGB(30, 32, 40)
+		MobileAimButton.TextColor3 = Aiming and Color3.fromRGB(10, 10, 12) or Styles.TextMain
+	end
+
+	if MobileMenuButton then
+		MobileMenuButton.Text = MainMenuUI and MainMenuUI.Visible and "HIDE\nUI" or "SHOW\nUI"
 	end
 end
 
 local function UpdateLeftPanelShortcuts()
 	if ShortcutList then
 		local statusText = Aiming and "ON" or "OFF"
-		ShortcutList.Text = string.format(
-			"[%s] Aim Lock: %s\n[%s] Toggle UI",
-			GetKeybindName(Settings.AimKey),
-			statusText,
-			GetKeybindName(Settings.ToggleUiKey)
-		)
+
+		if IsTouchDevice then
+			ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
+		else
+			ShortcutList.Text = string.format(
+				"[%s] Aim Lock: %s\n[%s] Toggle UI",
+				GetKeybindName(Settings.AimKey),
+				statusText,
+				GetKeybindName(Settings.ToggleUiKey)
+			)
+		end
+	end
+
+	UpdateMobileControlButtons()
+end
+
+local function ToggleAiming()
+	if not AccessNoticeDismissed or not Settings.Enabled then return end
+
+	Aiming = not Aiming
+
+	if not Aiming then
+		ControlClick(false)
+	end
+
+	UpdateLeftPanelShortcuts()
+end
+
+local function ToggleMainMenu()
+	if not AccessNoticeDismissed or not MainMenuUI then return end
+
+	if IsTouchDevice then
+		MainMenuUI.Visible = not MainMenuUI.Visible
+		UpdateMobileControlButtons()
+		return
+	end
+
+	local isVis = MainMenuUI.Size.Y.Offset > 40
+	local container = MainMenuUI:FindFirstChild("WindowContainerFrame")
+
+	if container then
+		if isVis then
+			TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
+			container.Visible = false
+		else
+			container.Visible = true
+			TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
+		end
 	end
 end
 
@@ -733,24 +807,12 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 	if processed then return end
 
-	if AccessNoticeDismissed and input.KeyCode == Settings.AimKey then 
-		Aiming = not Aiming 
-		if not Aiming then ControlClick(false) end
-		UpdateLeftPanelShortcuts()
+	if AccessNoticeDismissed and input.KeyCode == Settings.AimKey then
+		ToggleAiming()
 	end
 
-	if AccessNoticeDismissed and input.KeyCode == Settings.ToggleUiKey and MainMenuUI then
-		local isVis = MainMenuUI.Size.Y.Offset > 40
-		local container = MainMenuUI:FindFirstChild("WindowContainerFrame")
-		if container then
-			if isVis then 
-				TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint) 
-				container.Visible = false
-			else 
-				container.Visible = true 
-				TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint) 
-			end
-		end
+	if AccessNoticeDismissed and input.KeyCode == Settings.ToggleUiKey then
+		ToggleMainMenu()
 	end
 end)
 
@@ -759,19 +821,127 @@ local ScreenGui = Instance.new("ScreenGui", PlayerGui)
 ScreenGui.Name = CurrentScriptID
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999999
 
 local MainFrame = Instance.new("Frame", ScreenGui)
 MainFrame.Name = "MainFrame"
 MainFrame.BackgroundColor3 = Styles.Bg
 MainFrame.BackgroundTransparency = Settings.MenuTransparency
 MainFrame.BorderSizePixel = 0
-MainFrame.Position = UDim2.new(0.5, -270, 0.5, -207.5) 
-MainFrame.Size = UDim2.new(0, 540, 0, 415) 
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, 540, 0, 415)
 MainFrame.Active = true
 MainFrame.ClipsDescendants = true
 MainFrame.Visible = false
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 MainMenuUI = MainFrame
+
+MainUIScale = Instance.new("UIScale", MainFrame)
+
+MobileControls = Instance.new("Frame", ScreenGui)
+MobileControls.Name = "MobileControls"
+MobileControls.Size = UDim2.new(0, 64, 0, 146)
+MobileControls.Position = UDim2.new(1, -76, 0.5, -73)
+MobileControls.BackgroundTransparency = 1
+MobileControls.Visible = false
+MobileControls.ZIndex = 50
+MobileControls.Active = true
+
+local MobileDragHandle = Instance.new("TextButton", MobileControls)
+MobileDragHandle.Size = UDim2.new(0, 60, 0, 18)
+MobileDragHandle.Position = UDim2.new(0, 2, 0, 0)
+MobileDragHandle.BackgroundColor3 = Color3.fromRGB(20, 21, 27)
+MobileDragHandle.BorderSizePixel = 0
+MobileDragHandle.Text = "≡"
+MobileDragHandle.TextColor3 = Styles.TextDark
+MobileDragHandle.TextSize = 14
+MobileDragHandle.Font = Enum.Font.GothamBold
+MobileDragHandle.AutoButtonColor = false
+MobileDragHandle.ZIndex = 51
+Instance.new("UICorner", MobileDragHandle).CornerRadius = UDim.new(0, 7)
+
+MobileAimButton = Instance.new("TextButton", MobileControls)
+MobileAimButton.Size = UDim2.new(0, 60, 0, 56)
+MobileAimButton.Position = UDim2.new(0, 2, 0, 24)
+MobileAimButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+MobileAimButton.BorderSizePixel = 0
+MobileAimButton.Text = "AIM\nOFF"
+MobileAimButton.TextColor3 = Styles.TextMain
+MobileAimButton.TextSize = 11
+MobileAimButton.Font = Enum.Font.GothamBold
+MobileAimButton.AutoButtonColor = false
+MobileAimButton.ZIndex = 51
+Instance.new("UICorner", MobileAimButton).CornerRadius = UDim.new(0, 10)
+
+local MobileAimStroke = Instance.new("UIStroke", MobileAimButton)
+MobileAimStroke.Color = Styles.Accent
+MobileAimStroke.Thickness = 1.5
+
+MobileMenuButton = Instance.new("TextButton", MobileControls)
+MobileMenuButton.Size = UDim2.new(0, 60, 0, 56)
+MobileMenuButton.Position = UDim2.new(0, 2, 0, 90)
+MobileMenuButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+MobileMenuButton.BorderSizePixel = 0
+MobileMenuButton.Text = "SHOW\nUI"
+MobileMenuButton.TextColor3 = Styles.TextMain
+MobileMenuButton.TextSize = 10
+MobileMenuButton.Font = Enum.Font.GothamBold
+MobileMenuButton.AutoButtonColor = false
+MobileMenuButton.ZIndex = 51
+Instance.new("UICorner", MobileMenuButton).CornerRadius = UDim.new(0, 10)
+
+local MobileMenuStroke = Instance.new("UIStroke", MobileMenuButton)
+MobileMenuStroke.Color = Styles.Border
+MobileMenuStroke.Thickness = 1.5
+
+HookButtonAnimations(MobileAimButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
+HookButtonAnimations(MobileMenuButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
+
+MobileAimButton.Activated:Connect(function()
+	ToggleAiming()
+end)
+
+MobileMenuButton.Activated:Connect(function()
+	ToggleMainMenu()
+end)
+
+local mobileDragging = false
+local mobileDragInput = nil
+local mobileDragStart = nil
+local mobileStartPosition = nil
+
+MobileDragHandle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		mobileDragging = true
+		mobileDragStart = input.Position
+		mobileStartPosition = MobileControls.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				mobileDragging = false
+			end
+		end)
+	end
+end)
+
+MobileDragHandle.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+		mobileDragInput = input
+	end
+end)
+
+SafeConnect(UserInputService.InputChanged, function(input)
+	if input == mobileDragInput and mobileDragging then
+		local delta = input.Position - mobileDragStart
+		MobileControls.Position = UDim2.new(
+			mobileStartPosition.X.Scale,
+			mobileStartPosition.X.Offset + delta.X,
+			mobileStartPosition.Y.Scale,
+			mobileStartPosition.Y.Offset + delta.Y
+		)
+	end
+end)
 
 local MainStroke = Instance.new("UIStroke", MainFrame)
 MainStroke.Thickness = Settings.BorderThickness
@@ -836,9 +1006,12 @@ SubTitle.TextSize = 11
 SubTitle.Font = Enum.Font.Arimo
 SubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
+local HeaderControlSize = IsTouchDevice and 30 or 20
+local HeaderControlHalf = HeaderControlSize * 0.5
+
 local CloseBtn = Instance.new("TextButton", HeaderBar)
-CloseBtn.Size = UDim2.new(0, 20, 0, 20)
-CloseBtn.Position = UDim2.new(1, -26, 0.5, -10)
+CloseBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
+CloseBtn.Position = UDim2.new(1, -(IsTouchDevice and 36 or 26), 0.5, -HeaderControlHalf)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 25)
 CloseBtn.TextColor3 = Color3.fromRGB(240, 90, 90)
 CloseBtn.Text = "X" 
@@ -848,8 +1021,8 @@ Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 5)
 HookButtonAnimations(CloseBtn, Color3.fromRGB(40, 20, 25), Color3.fromRGB(60, 25, 32))
 
 local MinimizeBtn = Instance.new("TextButton", HeaderBar)
-MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
-MinimizeBtn.Position = UDim2.new(1, -52, 0.5, -10)
+MinimizeBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
+MinimizeBtn.Position = UDim2.new(1, -(IsTouchDevice and 72 or 52), 0.5, -HeaderControlHalf)
 MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
 MinimizeBtn.TextColor3 = Styles.TextDark
 MinimizeBtn.Text = "—"
@@ -1114,15 +1287,18 @@ local IsMin = false
 MinimizeBtn.MouseButton1Click:Connect(function()
 	IsMin = not IsMin
 	local container = WindowContainerFrame
-	if IsMin then 
-		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint) 
+
+	if IsMin then
+		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
 		container.Visible = false
 		MinimizeBtn.Text = "+"
-	else 
-		container.Visible = true 
-		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint) 
+	else
+		container.Visible = true
+		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
 		MinimizeBtn.Text = "—"
 	end
+
+	UpdateMobileControlButtons()
 end)
 
 local function CinematicClose()
@@ -1423,8 +1599,8 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local DropdownButton = Instance.new("TextButton", Card)
-	DropdownButton.Size = UDim2.new(0, 145, 0, 28)
-	DropdownButton.Position = UDim2.new(0.97, -145, 0, 14)
+	DropdownButton.Size = UDim2.new(0, 145, 0, IsTouchDevice and 34 or 28)
+	DropdownButton.Position = UDim2.new(0.97, -145, 0.5, IsTouchDevice and -17 or -14)
 	DropdownButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
 	DropdownButton.BorderSizePixel = 0
 	DropdownButton.Font = Enum.Font.GothamSemibold
@@ -1538,8 +1714,8 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local ValueButton = Instance.new("TextButton", Card)
-	ValueButton.Size = UDim2.new(0, 82, 0, 30)
-	ValueButton.Position = UDim2.new(0.97, -82, 0.5, -15)
+	ValueButton.Size = UDim2.new(0, 82, 0, IsTouchDevice and 36 or 30)
+	ValueButton.Position = UDim2.new(0.97, -82, 0.5, IsTouchDevice and -18 or -15)
 	ValueButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
 	ValueButton.BorderSizePixel = 0
 	ValueButton.Text = GetKeybindName(Settings[configKey])
@@ -1575,6 +1751,11 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	end)
 
 	ValueButton.MouseButton1Click:Connect(function()
+		if IsTouchDevice and not HasKeyboard then
+			ValueButton.Text = "PC ONLY"
+			return
+		end
+
 		if KeybindCapture then
 			UpdateKeybindValueButtons()
 		end
@@ -1593,7 +1774,12 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 			KeybindCapture = nil
 		end
 
-		ValueButton.Text = GetKeybindName(Settings[configKey])
+		if IsTouchDevice and not HasKeyboard then
+			ValueButton.Text = "PC ONLY"
+		else
+			ValueButton.Text = GetKeybindName(Settings[configKey])
+		end
+
 		ValueStroke.Color = Styles.Border
 	end)
 end
@@ -1779,12 +1965,15 @@ KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
 local AuthFrame = Instance.new("Frame", ScreenGui)
 AuthFrame.Name = "AccessFrame"
 AuthFrame.Size = UDim2.new(0, 390, 0, 250)
-AuthFrame.Position = UDim2.new(0.5, -195, 0.5, -125)
+AuthFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+AuthFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 AuthFrame.BackgroundColor3 = Styles.Bg
 AuthFrame.BorderSizePixel = 0
 AuthFrame.Active = true
 AuthFrame.Visible = true
 Instance.new("UICorner", AuthFrame).CornerRadius = UDim.new(0, 10)
+
+AuthUIScale = Instance.new("UIScale", AuthFrame)
 
 local AuthStroke = Instance.new("UIStroke", AuthFrame)
 AuthStroke.Color = Styles.Accent
@@ -1950,9 +2139,37 @@ IgnoreBtn.MouseButton1Click:Connect(function()
 	AccessNoticeDismissed = true
 	AuthFrame.Visible = false
 	MainFrame.Visible = true
+
+	if MobileControls then
+		MobileControls.Visible = IsTouchDevice
+	end
+
+	UpdateMobileControlButtons()
 	RefreshAllESP()
 	SystemLogEvent("Welcome screen ignored. Hub unlocked.")
 end)
 
+local function UpdateResponsiveScale()
+	local viewport = Camera.ViewportSize
+
+	if MainUIScale then
+		local widthScale = (viewport.X * 0.92) / 540
+		local heightScale = (viewport.Y * 0.86) / 415
+		MainUIScale.Scale = math.clamp(math.min(widthScale, heightScale), 0.55, 1)
+	end
+
+	if AuthUIScale then
+		local authWidthScale = (viewport.X * 0.92) / 390
+		local authHeightScale = (viewport.Y * 0.86) / 250
+		AuthUIScale.Scale = math.clamp(math.min(authWidthScale, authHeightScale), 0.62, 1)
+	end
+end
+
+UpdateResponsiveScale()
+SafeConnect(Camera:GetPropertyChangedSignal("ViewportSize"), UpdateResponsiveScale)
+
 MainFrame.Visible = false
 AuthFrame.Visible = true
+MobileControls.Visible = false
+UpdateKeybindValueButtons()
+UpdateLeftPanelShortcuts()
