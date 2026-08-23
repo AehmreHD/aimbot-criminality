@@ -1,20 +1,12 @@
 local Lighting = game:GetService("Lighting")
-local HttpService = game:GetService("HttpService")
 
 --// Cross-Script Hot-Reload State Transfer Engine
 local CurrentScriptID = "Aehmre_AimHub_v1"
 local env = (getgenv and getgenv()) or shared
 local SavedState = nil
 
-local KeyAPIURL = "http://127.0.0.1:5000"
-local KeyProduct = "aimbotHub"
-local DiscordInvite = "https://discord.gg/hjjrsKJ8AA"
-local StoredSessionToken = env[CurrentScriptID .. "_AuthSession"]
-local SessionToken = StoredSessionToken
-local SessionExpiresUnix = nil
-local Authenticated = false
-local AuthValidationFailures = 0
-local RequestFunction = request or http_request or (syn and syn.request) or (http and http.request)
+local DiscordInvite = "https://discord.gg/YOUR_INVITE"
+local AccessNoticeDismissed = false
 
 
 if env[CurrentScriptID] then
@@ -190,52 +182,6 @@ local function TweenObj(obj, goal, duration, style, dir)
 	return tween
 end
 
-local function PostJSON(path, payload)
-	if not RequestFunction then
-		return nil, "HTTP request function unavailable"
-	end
-
-	local ok, response = pcall(RequestFunction, {
-		Url = KeyAPIURL .. path,
-		Method = "POST",
-		Headers = {
-			["Content-Type"] = "application/json"
-		},
-		Body = HttpService:JSONEncode(payload)
-	})
-
-	if not ok or not response then
-		return nil, "Could not reach key server"
-	end
-
-	local body = response.Body or response.body or ""
-	local decodeOk, data = pcall(function()
-		return HttpService:JSONDecode(body)
-	end)
-
-	if not decodeOk or type(data) ~= "table" then
-		return nil, "Invalid key server response"
-	end
-
-	return data, nil
-end
-
-local function ParseSessionExpiry(isoDate)
-	if not isoDate or isoDate == "" then
-		return nil
-	end
-
-	local ok, dateTime = pcall(function()
-		return DateTime.fromIsoDate(isoDate)
-	end)
-
-	if ok and dateTime then
-		return dateTime.UnixTimestamp
-	end
-
-	return nil
-end
-
 --// Drawing Vector FOV Crosshair & Target Indicator Framework
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Styles.Accent
@@ -304,7 +250,7 @@ local function UpdatePlayerESP(player)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local highlight = character:FindFirstChild("TestESP_Highlight")
 
-	if Authenticated and Settings.Enabled and Settings.ESPEnabled and humanoid and humanoid.Health > 0 then
+	if AccessNoticeDismissed and Settings.Enabled and Settings.ESPEnabled and humanoid and humanoid.Health > 0 then
 		if not highlight then
 			highlight = Instance.new("Highlight")
 			highlight.Name = "TestESP_Highlight"
@@ -549,7 +495,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			DebugTargetRefreshTimer = 0
 		end
 
-		if Authenticated and Settings.ShowFPS then
+		if AccessNoticeDismissed and Settings.ShowFPS then
 			if FPSUpdateTimer >= 0.25 then
 				FPSDisplay.Text = "FPS: " .. tostring(math.floor((1 / deltaTime) + 0.5))
 				FPSUpdateTimer = 0
@@ -562,7 +508,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 
 		FOVCircle.Position = UserInputService:GetMouseLocation()
 
-		if Authenticated and Settings.Enabled and Aiming then
+		if AccessNoticeDismissed and Settings.Enabled and Aiming then
 			FOVCircle.Color = AimFOVColor
 
 			if Settings.FOVPulse then
@@ -580,9 +526,9 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			FOVCircle.Transparency = 1
 		end
 
-		FOVCircle.Visible = Authenticated and Settings.Enabled and Settings.ShowFOV
+		FOVCircle.Visible = AccessNoticeDismissed and Settings.Enabled and Settings.ShowFOV
 
-		if Authenticated and Settings.Enabled and Aiming then
+		if AccessNoticeDismissed and Settings.Enabled and Aiming then
 			TargetBlocked = false
 
 			if not IsTargetValid(Target) then
@@ -735,13 +681,13 @@ end
 
 SafeConnect(UserInputService.InputBegan, function(input, processed)
 	if processed then return end
-	if Authenticated and input.KeyCode == Settings.AimKey then 
+	if AccessNoticeDismissed and input.KeyCode == Settings.AimKey then 
 		Aiming = not Aiming 
 		if not Aiming then ControlClick(false) end
 		UpdateLeftPanelShortcuts()
 	end
 
-	if Authenticated and input.KeyCode == Settings.ToggleUiKey and MainMenuUI then
+	if AccessNoticeDismissed and input.KeyCode == Settings.ToggleUiKey and MainMenuUI then
 		local isVis = MainMenuUI.Size.Y.Offset > 40
 		local container = MainMenuUI:FindFirstChild("WindowContainerFrame")
 		if container then
@@ -1683,9 +1629,9 @@ HookButtonAnimations(KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(6
 KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
 
 local AuthFrame = Instance.new("Frame", ScreenGui)
-AuthFrame.Name = "AuthenticationFrame"
-AuthFrame.Size = UDim2.new(0, 390, 0, 300)
-AuthFrame.Position = UDim2.new(0.5, -195, 0.5, -150)
+AuthFrame.Name = "AccessFrame"
+AuthFrame.Size = UDim2.new(0, 390, 0, 250)
+AuthFrame.Position = UDim2.new(0.5, -195, 0.5, -125)
 AuthFrame.BackgroundColor3 = Styles.Bg
 AuthFrame.BorderSizePixel = 0
 AuthFrame.Active = true
@@ -1712,7 +1658,7 @@ local AuthTitle = Instance.new("TextLabel", AuthHeader)
 AuthTitle.Size = UDim2.new(1, -28, 0, 20)
 AuthTitle.Position = UDim2.new(0, 14, 0, 7)
 AuthTitle.BackgroundTransparency = 1
-AuthTitle.Text = "AEHMRE // AUTHENTICATION"
+AuthTitle.Text = "AEHMRE // WELCOME"
 AuthTitle.Font = Enum.Font.GothamBold
 AuthTitle.TextSize = 13
 AuthTitle.TextColor3 = Styles.TextMain
@@ -1722,17 +1668,17 @@ local AuthSubTitle = Instance.new("TextLabel", AuthHeader)
 AuthSubTitle.Size = UDim2.new(1, -28, 0, 14)
 AuthSubTitle.Position = UDim2.new(0, 14, 0, 25)
 AuthSubTitle.BackgroundTransparency = 1
-AuthSubTitle.Text = "AIMBOT HUB ACCESS"
+AuthSubTitle.Text = "AIMBOT HUB"
 AuthSubTitle.Font = Enum.Font.GothamSemibold
 AuthSubTitle.TextSize = 9
 AuthSubTitle.TextColor3 = Styles.Accent
 AuthSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local AuthInfo = Instance.new("TextLabel", AuthFrame)
-AuthInfo.Size = UDim2.new(1, -32, 0, 42)
+AuthInfo.Size = UDim2.new(1, -32, 0, 38)
 AuthInfo.Position = UDim2.new(0, 16, 0, 62)
 AuthInfo.BackgroundTransparency = 1
-AuthInfo.Text = "Enter your private access key. Standard access lasts 12 hours after one-time redemption."
+AuthInfo.Text = "Join the Discord for updates, announcements and future access-system information."
 AuthInfo.Font = Enum.Font.Gotham
 AuthInfo.TextSize = 10
 AuthInfo.TextWrapped = true
@@ -1742,72 +1688,59 @@ AuthInfo.TextYAlignment = Enum.TextYAlignment.Top
 
 local KeyInput = Instance.new("TextBox", AuthFrame)
 KeyInput.Size = UDim2.new(1, -32, 0, 38)
-KeyInput.Position = UDim2.new(0, 16, 0, 112)
+KeyInput.Position = UDim2.new(0, 16, 0, 108)
 KeyInput.BackgroundColor3 = Styles.CardBg
 KeyInput.BorderSizePixel = 0
 KeyInput.ClearTextOnFocus = false
-KeyInput.PlaceholderText = "AEH-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-KeyInput.PlaceholderColor3 = Color3.fromRGB(80, 80, 88)
-KeyInput.Text = ""
-KeyInput.TextColor3 = Styles.TextMain
+KeyInput.TextEditable = false
+KeyInput.Text = "KEY SYSTEM DISABLED FOR NOW"
+KeyInput.TextColor3 = Styles.TextDark
 KeyInput.Font = Enum.Font.Code
 KeyInput.TextSize = 11
-KeyInput.TextXAlignment = Enum.TextXAlignment.Left
+KeyInput.TextXAlignment = Enum.TextXAlignment.Center
+KeyInput.Active = false
+KeyInput.Selectable = false
 Instance.new("UICorner", KeyInput).CornerRadius = UDim.new(0, 6)
-
-local KeyPadding = Instance.new("UIPadding", KeyInput)
-KeyPadding.PaddingLeft = UDim.new(0, 12)
-KeyPadding.PaddingRight = UDim.new(0, 12)
 
 local KeyStroke = Instance.new("UIStroke", KeyInput)
 KeyStroke.Color = Styles.Border
 
-local VerifyKeyBtn = Instance.new("TextButton", AuthFrame)
-VerifyKeyBtn.Size = UDim2.new(1, -32, 0, 36)
-VerifyKeyBtn.Position = UDim2.new(0, 16, 0, 160)
-VerifyKeyBtn.BackgroundColor3 = Styles.Accent
-VerifyKeyBtn.BorderSizePixel = 0
-VerifyKeyBtn.Text = "VERIFY KEY"
-VerifyKeyBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-VerifyKeyBtn.Font = Enum.Font.GothamBold
-VerifyKeyBtn.TextSize = 11
-VerifyKeyBtn.AutoButtonColor = false
-Instance.new("UICorner", VerifyKeyBtn).CornerRadius = UDim.new(0, 6)
+local CopyDiscordBtn = Instance.new("TextButton", AuthFrame)
+CopyDiscordBtn.Size = UDim2.new(0.5, -20, 0, 36)
+CopyDiscordBtn.Position = UDim2.new(0, 16, 0, 158)
+CopyDiscordBtn.BackgroundColor3 = Styles.Accent
+CopyDiscordBtn.BorderSizePixel = 0
+CopyDiscordBtn.Text = "COPY DISCORD INVITE"
+CopyDiscordBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+CopyDiscordBtn.Font = Enum.Font.GothamBold
+CopyDiscordBtn.TextSize = 9
+CopyDiscordBtn.AutoButtonColor = false
+Instance.new("UICorner", CopyDiscordBtn).CornerRadius = UDim.new(0, 6)
 
-local JoinDiscordBtn = Instance.new("TextButton", AuthFrame)
-JoinDiscordBtn.Size = UDim2.new(0.5, -20, 0, 32)
-JoinDiscordBtn.Position = UDim2.new(0, 16, 0, 206)
-JoinDiscordBtn.BackgroundColor3 = Styles.CardBg
-JoinDiscordBtn.BorderSizePixel = 0
-JoinDiscordBtn.Text = "JOIN DISCORD"
-JoinDiscordBtn.TextColor3 = Styles.TextMain
-JoinDiscordBtn.Font = Enum.Font.GothamBold
-JoinDiscordBtn.TextSize = 10
-Instance.new("UICorner", JoinDiscordBtn).CornerRadius = UDim.new(0, 6)
-
-local CancelAuthBtn = Instance.new("TextButton", AuthFrame)
-CancelAuthBtn.Size = UDim2.new(0.5, -20, 0, 32)
-CancelAuthBtn.Position = UDim2.new(0.5, 4, 0, 206)
-CancelAuthBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 25)
-CancelAuthBtn.BorderSizePixel = 0
-CancelAuthBtn.Text = "CANCEL"
-CancelAuthBtn.TextColor3 = Color3.fromRGB(240, 90, 90)
-CancelAuthBtn.Font = Enum.Font.GothamBold
-CancelAuthBtn.TextSize = 10
-Instance.new("UICorner", CancelAuthBtn).CornerRadius = UDim.new(0, 6)
+local IgnoreBtn = Instance.new("TextButton", AuthFrame)
+IgnoreBtn.Size = UDim2.new(0.5, -20, 0, 36)
+IgnoreBtn.Position = UDim2.new(0.5, 4, 0, 158)
+IgnoreBtn.BackgroundColor3 = Styles.CardBg
+IgnoreBtn.BorderSizePixel = 0
+IgnoreBtn.Text = "IGNORE"
+IgnoreBtn.TextColor3 = Styles.TextMain
+IgnoreBtn.Font = Enum.Font.GothamBold
+IgnoreBtn.TextSize = 10
+IgnoreBtn.AutoButtonColor = false
+Instance.new("UICorner", IgnoreBtn).CornerRadius = UDim.new(0, 6)
 
 local AuthStatus = Instance.new("TextLabel", AuthFrame)
-AuthStatus.Size = UDim2.new(1, -32, 0, 38)
-AuthStatus.Position = UDim2.new(0, 16, 0, 248)
+AuthStatus.Size = UDim2.new(1, -32, 0, 30)
+AuthStatus.Position = UDim2.new(0, 16, 0, 204)
 AuthStatus.BackgroundTransparency = 1
-AuthStatus.Text = "Waiting for key..."
+AuthStatus.Text = "Discord access is optional."
 AuthStatus.Font = Enum.Font.GothamSemibold
 AuthStatus.TextSize = 9
 AuthStatus.TextWrapped = true
 AuthStatus.TextColor3 = Styles.TextDark
 
-HookButtonAnimations(JoinDiscordBtn, Styles.CardBg, Styles.CardHover)
-HookButtonAnimations(CancelAuthBtn, Color3.fromRGB(40, 20, 25), Color3.fromRGB(60, 25, 32))
+HookButtonAnimations(CopyDiscordBtn, Styles.Accent, Styles.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.15))
+HookButtonAnimations(IgnoreBtn, Styles.CardBg, Styles.CardHover)
 
 local authDragging = false
 local authDragInput = nil
@@ -1851,252 +1784,27 @@ local function SetAuthStatus(text, color)
 	AuthStatus.TextColor3 = color or Styles.TextDark
 end
 
-local function ShowAuthentication(reason)
-	Authenticated = false
-	Aiming = false
-	Target = nil
-	ControlClick(false)
-	MainFrame.Visible = false
-	AuthFrame.Visible = true
-	KeyInput.Text = ""
-	SetAuthStatus(reason or "Enter a valid access key.", Styles.TextDark)
-	RefreshAllESP()
-end
-
-local function UnlockHub(data)
-	Authenticated = true
-	AuthValidationFailures = 0
-	SessionToken = data.session_token or SessionToken
-	SessionExpiresUnix = ParseSessionExpiry(data.session_expires_at)
-
-	if SessionToken then
-		env[CurrentScriptID .. "_AuthSession"] = SessionToken
-	end
-
-	AuthFrame.Visible = false
-	MainFrame.Visible = true
-	RefreshAllESP()
-	SystemLogEvent("Authentication successful.")
-end
-
-local function LockHub(reason)
-	Authenticated = false
-	SessionToken = nil
-	SessionExpiresUnix = nil
-	env[CurrentScriptID .. "_AuthSession"] = nil
-	env[CurrentScriptID .. "_DataPacket"] = nil
-	FactoryResetSettings()
-	ShowAuthentication(reason)
-end
-
-local function ValidateStoredSession(showFailure)
-	if not SessionToken then
-		if showFailure then
-			ShowAuthentication("Enter your Aehmre access key.")
-		end
-
-		return false
-	end
-
-	local data, err = PostJSON("/validate", {
-		session_token = SessionToken,
-		product = KeyProduct
-	})
-
-	if not data then
-		AuthValidationFailures += 1
-
-		if showFailure then
-			ShowAuthentication(err or "Key server unavailable.")
-		end
-
-		return false
-	end
-
-	if data.success and data.valid then
-		SessionExpiresUnix = ParseSessionExpiry(data.session_expires_at)
-		Authenticated = true
-		AuthValidationFailures = 0
-		AuthFrame.Visible = false
-		MainFrame.Visible = true
-		RefreshAllESP()
-		return true
-	end
-
-	local errorCode = tostring(data.error or "invalid_session")
-
-	if errorCode == "session_expired" then
-		LockHub("Your 12-hour access expired. Get a new key.")
-	elseif errorCode == "revoked" then
-		LockHub("This access has been revoked.")
-	elseif errorCode == "wrong_product" then
-		LockHub("This key session is for another product.")
-	else
-		LockHub("Your saved session is no longer valid.")
-	end
-
-	return false
-end
-
-local verifyingKey = false
-
-local function RedeemEnteredKey()
-	if verifyingKey then
-		return
-	end
-
-	local key = KeyInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
-
-	if key == "" then
-		SetAuthStatus("Enter a key first.", Color3.fromRGB(255, 100, 100))
-		return
-	end
-
-	verifyingKey = true
-	VerifyKeyBtn.Text = "VERIFYING..."
-	VerifyKeyBtn.Active = false
-	SetAuthStatus("Contacting Aehmre Key API...", Styles.TextDark)
-
-	local data, err = PostJSON("/redeem", {
-		key = key,
-		product = KeyProduct
-	})
-
-	if not data then
-		SetAuthStatus(err or "Could not reach key server.", Color3.fromRGB(255, 100, 100))
-		VerifyKeyBtn.Text = "VERIFY KEY"
-		VerifyKeyBtn.Active = true
-		verifyingKey = false
-		return
-	end
-
-	if data.success and data.session_token then
-		SetAuthStatus("Access granted.", Color3.fromRGB(90, 255, 130))
-		UnlockHub(data)
-		VerifyKeyBtn.Text = "VERIFY KEY"
-		VerifyKeyBtn.Active = true
-		verifyingKey = false
-		return
-	end
-
-	local errorCode = tostring(data.error or "unknown_error")
-	local messages = {
-		invalid_key = "Invalid key.",
-		wrong_product = "This key belongs to another product.",
-		already_redeemed = "This key has already been redeemed.",
-		expired = "This key has expired.",
-		revoked = "This key has been revoked.",
-		rate_limited = "Too many attempts. Try again shortly.",
-		missing_key_or_product = "Missing key information.",
-		invalid_request = "Invalid key request."
-	}
-
-	SetAuthStatus(messages[errorCode] or ("Authentication failed: " .. errorCode), Color3.fromRGB(255, 100, 100))
-	VerifyKeyBtn.Text = "VERIFY KEY"
-	VerifyKeyBtn.Active = true
-	verifyingKey = false
-end
-
-VerifyKeyBtn.MouseButton1Click:Connect(RedeemEnteredKey)
-
-KeyInput.FocusLost:Connect(function(enterPressed)
-	if enterPressed then
-		RedeemEnteredKey()
-	end
-end)
-
-JoinDiscordBtn.MouseButton1Click:Connect(function()
+CopyDiscordBtn.MouseButton1Click:Connect(function()
 	if DiscordInvite:find("YOUR_INVITE", 1, true) then
-		SetAuthStatus("Set your Discord invite link in DiscordInvite first.", Color3.fromRGB(255, 190, 90))
+		SetAuthStatus("Set your Discord invite in DiscordInvite first.", Color3.fromRGB(255, 190, 90))
 		return
 	end
 
 	if setclipboard then
 		setclipboard(DiscordInvite)
-		SetAuthStatus("Discord invite copied to clipboard.", Color3.fromRGB(90, 255, 130))
+		SetAuthStatus("Discord invite copied.", Color3.fromRGB(90, 255, 130))
 	else
-		SetAuthStatus(DiscordInvite, Styles.TextMain)
+		SetAuthStatus("Clipboard is unavailable: " .. DiscordInvite, Styles.TextMain)
 	end
 end)
 
-CancelAuthBtn.MouseButton1Click:Connect(function()
-	env[CurrentScriptID] = nil
-	UniversalDestruct()
+IgnoreBtn.MouseButton1Click:Connect(function()
+	AccessNoticeDismissed = true
+	AuthFrame.Visible = false
+	MainFrame.Visible = true
+	RefreshAllESP()
+	SystemLogEvent("Welcome screen ignored. Hub unlocked.")
 end)
 
-task.spawn(function()
-	if SessionToken then
-		SetAuthStatus("Validating saved session...", Styles.TextDark)
-
-		local ok = ValidateStoredSession(false)
-
-		if not ok and SessionToken then
-			ShowAuthentication("Key server unavailable. Try again in a moment.")
-		end
-	else
-		ShowAuthentication("Enter your Aehmre access key.")
-	end
-end)
-
-task.spawn(function()
-	local validationTimer = 0
-
-	while ScreenGui.Parent do
-		task.wait(5)
-
-		if Authenticated then
-			if SessionExpiresUnix and DateTime.now().UnixTimestamp >= SessionExpiresUnix then
-				LockHub("Your 12-hour access expired. Get a new key.")
-			else
-				validationTimer += 5
-
-				if validationTimer >= 60 then
-					validationTimer = 0
-
-					local data, err = PostJSON("/validate", {
-						session_token = SessionToken,
-						product = KeyProduct
-					})
-
-					if data then
-						AuthValidationFailures = 0
-
-						if data.success and data.valid then
-							SessionExpiresUnix = ParseSessionExpiry(data.session_expires_at)
-						else
-							local errorCode = tostring(data.error or "invalid_session")
-
-							if errorCode == "session_expired" then
-								LockHub("Your 12-hour access expired. Get a new key.")
-							elseif errorCode == "revoked" then
-								LockHub("This access has been revoked.")
-							elseif errorCode == "wrong_product" then
-								LockHub("This access belongs to another product.")
-							else
-								LockHub("Your session is no longer valid.")
-							end
-						end
-					else
-						AuthValidationFailures += 1
-
-						if AuthValidationFailures >= 5 then
-							SystemLogEvent("Key API temporarily unreachable.")
-							AuthValidationFailures = 0
-						end
-					end
-				end
-			end
-		else
-			validationTimer = 0
-
-			if SessionToken then
-				AuthValidationFailures += 5
-
-				if AuthValidationFailures >= 15 then
-					AuthValidationFailures = 0
-					ValidateStoredSession(false)
-				end
-			end
-		end
-	end
-end)
+MainFrame.Visible = false
+AuthFrame.Visible = true
