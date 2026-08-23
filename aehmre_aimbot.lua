@@ -5,7 +5,7 @@ local CurrentScriptID = "Aehmre_AimHub_v1"
 local env = (getgenv and getgenv()) or shared
 local SavedState = nil
 
-local DiscordInvite = "https://discord.gg/YOUR_INVITE"
+local DiscordInvite = "https://discord.gg/hjjrsKJ8AA"
 local AccessNoticeDismissed = false
 
 
