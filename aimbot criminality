@@ -36,8 +36,6 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
 local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -60,12 +58,6 @@ local Settings = {
 	ShowFPS = false,
 	WallCheckDebug = false,
 	TargetInfo = false,
-	ApplyWalkSpeed = false,
-	ApplyJumpPower = false,
-	Noclip = false,
-	CharacterUpdateInterval = 1.00,
-	PlayerWalkSpeed = Humanoid.WalkSpeed,
-	PlayerJumpPower = Humanoid.JumpPower,
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -302,145 +294,11 @@ local function ControlClick(press)
 	end
 end
 
-local OriginalWalkSpeed = nil
-local OriginalJumpPower = nil
-local OriginalUseJumpPower = nil
-local ModifierCharacter = nil
-local CharacterParts = {}
-local CollisionDefaults = {}
-
-local function GetLocalHumanoid()
-	local character = LocalPlayer.Character
-	if not character then return nil end
-	return character:FindFirstChildOfClass("Humanoid")
-end
-
-local function RefreshWalkSpeed()
-	local humanoid = GetLocalHumanoid()
-	if not humanoid then return end
-
-	if Settings.ApplyWalkSpeed then
-		humanoid.WalkSpeed = Settings.PlayerWalkSpeed
-	elseif OriginalWalkSpeed ~= nil then
-		humanoid.WalkSpeed = OriginalWalkSpeed
-	end
-end
-
-local function RefreshJumpPower()
-	local humanoid = GetLocalHumanoid()
-	if not humanoid then return end
-
-	if Settings.ApplyJumpPower then
-		humanoid.UseJumpPower = true
-		humanoid.JumpPower = Settings.PlayerJumpPower
-	else
-		if OriginalUseJumpPower ~= nil then humanoid.UseJumpPower = OriginalUseJumpPower end
-		if OriginalJumpPower ~= nil then humanoid.JumpPower = OriginalJumpPower end
-	end
-end
-
-local function RestoreNoclip()
-	for part, originalCanCollide in pairs(CollisionDefaults) do
-		if part and part.Parent then
-			part.CanCollide = originalCanCollide
-		end
-	end
-end
-
-local function RefreshNoclip()
-	if Settings.Noclip then
-		for _, part in ipairs(CharacterParts) do
-			if part and part.Parent then
-				part.CanCollide = false
-			end
-		end
-	else
-		RestoreNoclip()
-	end
-end
-
-local function RestoreCharacterModifiers()
-	local humanoid = GetLocalHumanoid()
-
-	if humanoid then
-		if OriginalWalkSpeed ~= nil then humanoid.WalkSpeed = OriginalWalkSpeed end
-		if OriginalUseJumpPower ~= nil then humanoid.UseJumpPower = OriginalUseJumpPower end
-		if OriginalJumpPower ~= nil then humanoid.JumpPower = OriginalJumpPower end
-	end
-
-	RestoreNoclip()
-end
-
-local function SetupModifierCharacter(character)
-	ModifierCharacter = character
-
-	table.clear(CharacterParts)
-	table.clear(CollisionDefaults)
-
-	local humanoid = character:WaitForChild("Humanoid", 10)
-
-	if humanoid then
-		OriginalWalkSpeed = humanoid.WalkSpeed
-		OriginalJumpPower = humanoid.JumpPower
-		OriginalUseJumpPower = humanoid.UseJumpPower
-	end
-
-	for _, object in ipairs(character:GetDescendants()) do
-		if object:IsA("BasePart") then
-			table.insert(CharacterParts, object)
-			CollisionDefaults[object] = object.CanCollide
-		end
-	end
-
-	SafeConnect(character.DescendantAdded, function(object)
-		if character ~= ModifierCharacter then return end
-
-		if object:IsA("BasePart") then
-			table.insert(CharacterParts, object)
-			CollisionDefaults[object] = object.CanCollide
-
-			if Settings.Noclip then
-				object.CanCollide = false
-			end
-		end
-	end)
-
-	task.defer(function()
-		RefreshWalkSpeed()
-		RefreshJumpPower()
-		RefreshNoclip()
-	end)
-end
-
-if LocalPlayer.Character then
-	task.spawn(SetupModifierCharacter, LocalPlayer.Character)
-end
-
-SafeConnect(LocalPlayer.CharacterAdded, SetupModifierCharacter)
-
-local CharacterUpdaterRunning = true
-
-task.spawn(function()
-	while CharacterUpdaterRunning do
-		if Settings.ApplyWalkSpeed then
-			RefreshWalkSpeed()
-		end
-
-		if Settings.ApplyJumpPower then
-			RefreshJumpPower()
-		end
-
-		task.wait(math.clamp(Settings.CharacterUpdateInterval, 0.15, 5))
-	end
-end)
-
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
-	CharacterUpdaterRunning = false
 	pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
 	for _, con in ipairs(GlobalConnections) do if con and con.Disconnect then pcall(function() con:Disconnect() end) end end
 	ControlClick(false)
-	RestoreCharacterModifiers()
 	pcall(function() FOVCircle:Remove() end)
 	pcall(function() TargetDot:Remove() end)
 	pcall(function()
@@ -462,6 +320,10 @@ AimRaycastParams.IgnoreWater = true
 local RaycastIgnore = table.create(2)
 
 local function GetTargetPart(character)
+	if Settings.TargetPart == "Torso" then
+		return character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("HumanoidRootPart")
+	end
+
 	return character:FindFirstChild(Settings.TargetPart) or character:FindFirstChild("HumanoidRootPart")
 end
 
@@ -649,7 +511,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			end
 
 			if Target and Target.Character then
-				local HitPart = Target.Character:FindFirstChild(Settings.TargetPart) or Target.Character:FindFirstChild("HumanoidRootPart")
+				local HitPart = GetTargetPart(Target.Character)
 				if HitPart then
 					-- NEW: Draw Target Indicator Module
 					local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
@@ -1102,7 +964,6 @@ end
 
 local AimPage = RegisterTabContainerPage("Aim Lock")
 local VisPage = RegisterTabContainerPage("Visuals / ESP")
-local PlayerPage = RegisterTabContainerPage("Player & Character")
 local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
 local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
@@ -1435,10 +1296,127 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	end)
 end
 
+local function AddDashboardDropdown(parentPage, configKey, displayTitle, options, desc)
+	local Card = Instance.new("Frame", parentPage)
+	Card.Size = UDim2.new(0.94, 0, 0, 56)
+	Card.BackgroundColor3 = Styles.CardBg
+	Card.BorderSizePixel = 0
+	Card.ClipsDescendants = true
+	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
+
+	local Stroke = Instance.new("UIStroke", Card)
+	Stroke.Color = Styles.Border
+
+	local TitleLabel = Instance.new("TextLabel", Card)
+	TitleLabel.Size = UDim2.new(0.5, 0, 0, 18)
+	TitleLabel.Position = UDim2.new(0.03, 0, 0.12, 0)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = displayTitle
+	TitleLabel.Font = Enum.Font.GothamSemibold
+	TitleLabel.TextSize = 12
+	TitleLabel.TextColor3 = Styles.TextMain
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DescLabel = Instance.new("TextLabel", Card)
+	DescLabel.Size = UDim2.new(0.6, 0, 0, 14)
+	DescLabel.Position = UDim2.new(0.03, 0, 0.48, 0)
+	DescLabel.BackgroundTransparency = 1
+	DescLabel.Text = desc
+	DescLabel.Font = Enum.Font.Gotham
+	DescLabel.TextSize = 9
+	DescLabel.TextColor3 = Styles.TextDark
+	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DropdownButton = Instance.new("TextButton", Card)
+	DropdownButton.Size = UDim2.new(0, 145, 0, 28)
+	DropdownButton.Position = UDim2.new(0.97, -145, 0, 14)
+	DropdownButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+	DropdownButton.BorderSizePixel = 0
+	DropdownButton.Font = Enum.Font.GothamSemibold
+	DropdownButton.TextColor3 = Styles.TextMain
+	DropdownButton.TextSize = 10
+	DropdownButton.AutoButtonColor = false
+	Instance.new("UICorner", DropdownButton).CornerRadius = UDim.new(0, 5)
+
+	local OptionsFrame = Instance.new("Frame", Card)
+	OptionsFrame.Size = UDim2.new(0.94, 0, 0, #options * 30)
+	OptionsFrame.Position = UDim2.new(0.03, 0, 0, 60)
+	OptionsFrame.BackgroundTransparency = 1
+	OptionsFrame.Visible = false
+
+	local OptionsLayout = Instance.new("UIListLayout", OptionsFrame)
+	OptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	OptionsLayout.Padding = UDim.new(0, 4)
+
+	local isOpen = false
+
+	local function UpdateDropdownText()
+		DropdownButton.Text = tostring(Settings[configKey]) .. (isOpen and "  ▲" or "  ▼")
+	end
+
+	local function SetOpen(open)
+		isOpen = open
+		OptionsFrame.Visible = open
+		UpdateDropdownText()
+
+		local height = open and (64 + (#options * 30)) or 56
+		TweenObj(Card, { Size = UDim2.new(0.94, 0, 0, height) }, 0.2, Enum.EasingStyle.Quint)
+		TweenObj(Stroke, { Color = open and Styles.Accent or Styles.Border }, 0.2)
+	end
+
+	for index, option in ipairs(options) do
+		local OptionButton = Instance.new("TextButton", OptionsFrame)
+		OptionButton.Size = UDim2.new(1, 0, 0, 26)
+		OptionButton.LayoutOrder = index
+		OptionButton.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
+		OptionButton.BorderSizePixel = 0
+		OptionButton.Font = Enum.Font.GothamSemibold
+		OptionButton.Text = option
+		OptionButton.TextColor3 = Styles.TextDark
+		OptionButton.TextSize = 10
+		OptionButton.AutoButtonColor = false
+		Instance.new("UICorner", OptionButton).CornerRadius = UDim.new(0, 5)
+
+		OptionButton.MouseEnter:Connect(function()
+			TweenObj(OptionButton, { BackgroundColor3 = Styles.CardHover, TextColor3 = Styles.TextMain }, 0.15)
+		end)
+
+		OptionButton.MouseLeave:Connect(function()
+			TweenObj(OptionButton, { BackgroundColor3 = Color3.fromRGB(26, 27, 35), TextColor3 = Styles.TextDark }, 0.15)
+		end)
+
+		OptionButton.MouseButton1Click:Connect(function()
+			Settings[configKey] = option
+			Target = nil
+			SetOpen(false)
+		end)
+	end
+
+	DropdownButton.MouseButton1Click:Connect(function()
+		SetOpen(not isOpen)
+	end)
+
+	Card.MouseEnter:Connect(function()
+		if not isOpen then TweenObj(Stroke, { Color = Styles.Accent }, 0.2) end
+	end)
+
+	Card.MouseLeave:Connect(function()
+		if not isOpen then TweenObj(Stroke, { Color = Styles.Border }, 0.2) end
+	end)
+
+	UpdateDropdownText()
+
+	table.insert(UIUpdaters, function()
+		SetOpen(false)
+		UpdateDropdownText()
+	end)
+end
+
 --// Map Interface Elements Across Target Tab Frames
 AddDashboardButton(AimPage, "Enabled", "System Master Processing", "★ Optimal Placement: Core Hub Active On Screen", "Enables global calculation thread loops across physics steps.")
 AddDashboardButton(AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
 AddDashboardButton(AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
+AddDashboardDropdown(AimPage, "TargetPart", "Target Part", {"Head", "HumanoidRootPart", "Torso"}, "Select the body part used for target locking.")
 -- NEW: Configurable Visual Enhancements Hooked to UI
 AddDashboardButton(AimPage, "TargetIndicator", "Draw Target Indicator", "★ Aimbot Customization: Realtime Tracking UI", "Spawns a highly responsive neon circle exactly over the enemy hit-part.")
 AddDashboardButton(AimPage, "FOVPulse", "FOV Pulse Animation", "★ Aimbot Customization: Action Feedback Response", "Pulses the main threat boundary ring smoothly when target acquisition is active.")
@@ -1462,67 +1440,6 @@ AddDashboardButton(TestPage, "ShowFPS", "Show FPS", "Displays your current frame
 AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line to the current aim target.", "Green = visible, red = blocked by geometry.")
 
 AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
-
-AddDashboardSlider(
-	PlayerPage,
-	"CharacterUpdateInterval",
-	"WalkSpeed & JumpPower Update Interval",
-	0.15,
-	5,
-	"Controls how often WalkSpeed and JumpPower are re-applied.",
-	'<font color="rgb(255, 95, 95)"><b>Warning:</b> Very short intervals may cause lag or freezing.</font>',
-	nil,
-	2
-)
-
-AddDashboardButton(PlayerPage, "ApplyWalkSpeed", "Apply WalkSpeed", "Enables custom character movement speed.", "Turn this on before WalkSpeed is applied.", function()
-	RefreshWalkSpeed()
-end)
-
-AddDashboardSlider(PlayerPage, "PlayerWalkSpeed", "Player WalkSpeed", 1, 250, "Controls the local Humanoid WalkSpeed.", "Only applied while Apply WalkSpeed is enabled.", function()
-	if Settings.ApplyWalkSpeed then
-		RefreshWalkSpeed()
-	end
-end)
-
-AddDashboardButton(PlayerPage, "ApplyJumpPower", "Apply JumpPower", "Enables custom character jump power.", "Turn this on before JumpPower is applied.", function()
-	RefreshJumpPower()
-end)
-
-AddDashboardSlider(PlayerPage, "PlayerJumpPower", "Player JumpPower", 0, 250, "Controls the local Humanoid JumpPower.", "Only applied while Apply JumpPower is enabled.", function()
-	if Settings.ApplyJumpPower then
-		RefreshJumpPower()
-	end
-end)
-
-AddDashboardButton(PlayerPage, "Noclip", "Noclip", "Disables character collision while enabled.", "Allows movement through collidable geometry.", function()
-	RefreshNoclip()
-end)
-
-local BodyPartBtn = Instance.new("TextButton", CustPage)
-BodyPartBtn.Size = UDim2.new(0.94, 0, 0, 36)
-BodyPartBtn.BackgroundColor3 = Styles.CardBg
-BodyPartBtn.Font = Enum.Font.GothamSemibold
-BodyPartBtn.TextColor3 = Styles.TextMain
-BodyPartBtn.Text = "ACTIVE TARGET ELEMENT PART: " .. string.upper(Settings.TargetPart == "HumanoidRootPart" and "TORSO" or Settings.TargetPart)
-BodyPartBtn.TextSize = 10
-BodyPartBtn.BorderSizePixel = 0
-Instance.new("UICorner", BodyPartBtn).CornerRadius = UDim.new(0, 6)
-local PartStroke = Instance.new("UIStroke", BodyPartBtn)
-PartStroke.Color = Styles.Border
-HookButtonAnimations(BodyPartBtn, Styles.CardBg, Styles.CardHover)
-
-BodyPartBtn.MouseEnter:Connect(function() TweenObj(PartStroke, { Color = Styles.Accent }, 0.2) end)
-BodyPartBtn.MouseLeave:Connect(function() TweenObj(PartStroke, { Color = Styles.Border }, 0.2) end)
-
-BodyPartBtn.MouseButton1Click:Connect(function()
-	Settings.TargetPart = (Settings.TargetPart == "Head") and "HumanoidRootPart" or "Head"
-	BodyPartBtn.Text = "ACTIVE TARGET ELEMENT PART: " .. string.upper(Settings.TargetPart == "HumanoidRootPart" and "TORSO" or Settings.TargetPart)
-end)
-
-table.insert(UIUpdaters, function()
-	BodyPartBtn.Text = "ACTIVE TARGET ELEMENT PART: " .. string.upper(Settings.TargetPart == "HumanoidRootPart" and "TORSO" or Settings.TargetPart)
-end)
 
 local CycleColorBtn = Instance.new("TextButton", CustPage)
 CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
@@ -1616,9 +1533,6 @@ ResetConfigBtn.MouseButton1Click:Connect(function()
 	
 	UpdateFullbright(Settings.Fullbright)
 	RefreshAllESP()
-	RefreshWalkSpeed()
-	RefreshJumpPower()
-	RefreshNoclip()
 
 	local currentAccent = AccentPresets[Settings.AccentColorIndex]
 	Styles.Accent = currentAccent
