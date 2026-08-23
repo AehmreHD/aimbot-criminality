@@ -46,16 +46,18 @@ for _, id in ipairs(LegacyIDs) do
 	if oldGui then pcall(function() oldGui:Destroy() end) end
 end
 
---// Premium Advanced Configuration Memory Matrix
 local Settings = {
 	Enabled = true,
 	WallCheck = true,
 	AutoShoot = true,
 	ESPEnabled = true,
 	ShowFOV = true,
-	FOVPulse = true,         -- NEW: FOV Pulse Animation
-	TargetIndicator = true,  -- NEW: Draw Target Indicator
-	Fullbright = false, -- NEW: Full Bright Mode
+	FOVPulse = true,
+	TargetIndicator = true,
+	Fullbright = false,
+	ShowFPS = false,
+	WallCheckDebug = false,
+	TargetInfo = false,
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -159,6 +161,32 @@ TargetDot.Filled = true
 TargetDot.Radius = 4
 TargetDot.Visible = false
 TargetDot.ZIndex = 2
+
+local FPSDisplay = Drawing.new("Text")
+FPSDisplay.Text = "FPS: 0"
+FPSDisplay.Size = 16
+FPSDisplay.Position = Vector2.new(12, 12)
+FPSDisplay.Color = Styles.Accent
+FPSDisplay.Outline = true
+FPSDisplay.Visible = false
+FPSDisplay.ZIndex = 3
+
+local WallDebugLine = Drawing.new("Line")
+WallDebugLine.Thickness = 2
+WallDebugLine.Color = Color3.fromRGB(80, 255, 120)
+WallDebugLine.Visible = false
+WallDebugLine.ZIndex = 3
+
+local TargetInfoText = Drawing.new("Text")
+TargetInfoText.Size = 14
+TargetInfoText.Color = Styles.Accent
+TargetInfoText.Outline = true
+TargetInfoText.Visible = false
+TargetInfoText.ZIndex = 3
+
+local FPSUpdateTimer = 0
+local DebugInfoTimer = 0
+local TargetBlocked = false
 
 local function WispAllESPRemnants()
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -266,6 +294,9 @@ local function UniversalDestruct()
 		local OldGui = PlayerGui:FindFirstChild(CurrentScriptID)
 		if OldGui then OldGui:Destroy() end
 	end)
+	pcall(function() FPSDisplay:Remove() end)
+	pcall(function() WallDebugLine:Remove() end)
+	pcall(function() TargetInfoText:Remove() end)
 	WispAllESPRemnants()
 end
 env[CurrentScriptID] = UniversalDestruct 
@@ -334,6 +365,20 @@ local SystemLogEvent = function(msg) end
 RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
 	pcall(function()
 		deltaTime = deltaTime or 0.016 
+		
+		FPSUpdateTimer += deltaTime
+		DebugInfoTimer += deltaTime
+
+		if Settings.ShowFPS then
+			if FPSUpdateTimer >= 0.25 then
+				FPSDisplay.Text = "FPS: " .. tostring(math.floor((1 / deltaTime) + 0.5))
+				FPSUpdateTimer = 0
+			end
+
+			FPSDisplay.Visible = true
+		else
+			FPSDisplay.Visible = false
+		end
 
 		-- NEW: FOV Pulse Animation Math
 		FOVCircle.Position = UserInputService:GetMouseLocation()
@@ -349,6 +394,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 
 		if Settings.Enabled and Aiming then
 			local isTargetValid = false
+			TargetBlocked = false
 			if Target and Target.Character and Target.Character:FindFirstChild("HumanoidRootPart") then
 				local targetHum = Target.Character:FindFirstChildOfClass("Humanoid")
 				if targetHum and targetHum.Health > 0 then
@@ -366,8 +412,9 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 					WallIgnore[2] = Target.Character
 
 					local Parts = Camera:GetPartsObscuringTarget(WallPoints, WallIgnore)
+					TargetBlocked = #Parts > 0
 
-					if #Parts > 0 then Target = GetClosestPlayer() end
+					if TargetBlocked then Target = GetClosestPlayer() end
 				end
 			end
 
@@ -375,6 +422,45 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				local HitPart = Target.Character:FindFirstChild(Settings.TargetPart) or Target.Character:FindFirstChild("HumanoidRootPart")
 				if HitPart then
 					-- NEW: Draw Target Indicator Module
+					local screenPos, onScreen = Camera:WorldToViewportPoint(HitPart.Position)
+
+					if Settings.WallCheckDebug and onScreen then
+						local mousePosition = UserInputService:GetMouseLocation()
+
+						WallDebugLine.From = mousePosition
+						WallDebugLine.To = Vector2.new(screenPos.X, screenPos.Y)
+						WallDebugLine.Color = TargetBlocked and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 120)
+						WallDebugLine.Visible = true
+					else
+						WallDebugLine.Visible = false
+					end
+
+					if Settings.TargetInfo and onScreen then
+						TargetInfoText.Position = Vector2.new(screenPos.X + 12, screenPos.Y + 12)
+						TargetInfoText.Visible = true
+
+						if DebugInfoTimer >= 0.1 then
+							local humanoid = Target.Character:FindFirstChildOfClass("Humanoid")
+							local root = Target.Character:FindFirstChild("HumanoidRootPart")
+							local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+							local health = humanoid and math.floor(humanoid.Health) or 0
+							local distance = root and localRoot and math.floor((root.Position - localRoot.Position).Magnitude) or 0
+
+							TargetInfoText.Text = string.format(
+								"%s\nHP: %d\nDistance: %d studs\nPart: %s",
+								Target.DisplayName,
+								health,
+								distance,
+								Settings.TargetPart
+							)
+
+							DebugInfoTimer = 0
+						end
+					else
+						TargetInfoText.Visible = false
+					end
+					
 					if Settings.TargetIndicator then
 						local pos, onScreen = Camera:WorldToViewportPoint(HitPart.Position)
 						if onScreen then
@@ -419,10 +505,14 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				end
 			else
 				TargetDot.Visible = false
+				WallDebugLine.Visible = false
+				TargetInfoText.Visible = false
 				if IsShooting then IsShooting = false ControlClick(false) end
 			end
 		else
 			Target = nil
+			WallDebugLine.Visible = false
+			TargetInfoText.Visible = false
 			TargetDot.Visible = false
 			LastLoggedTarget = nil
 			if IsShooting then IsShooting = false ControlClick(false) end
@@ -781,7 +871,7 @@ local AimPage = RegisterTabContainerPage("Aim Lock")
 local VisPage = RegisterTabContainerPage("Visuals / ESP")
 local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
-local TestPage = RegisterTabContainerPage("Test")
+local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 local SettPage = RegisterTabContainerPage("Settings")
 
 -- NEW: Logger Write Hook Function
@@ -1097,6 +1187,12 @@ end)
 AddDashboardButton(TestPage, "Fullbright", "Enable Fullbright", "Makes dark areas fully visible.", "Toggle enhanced lighting visibility.", function(enabled)
 	UpdateFullbright(enabled)
 end)
+
+AddDashboardButton(TestPage, "ShowFPS", "Show FPS", "Displays your current frame rate.", "Useful for performance and lag testing.")
+
+AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line to the current aim target.", "Green = visible, red = blocked by geometry.")
+
+AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
 
 local BodyPartBtn = Instance.new("TextButton", CustPage)
 BodyPartBtn.Size = UDim2.new(0.94, 0, 0, 36)
