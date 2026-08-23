@@ -1,3 +1,5 @@
+local Lighting = game:GetService("Lighting")
+
 --// Cross-Script Hot-Reload State Transfer Engine
 local CurrentScriptID = "Ligia_Premium_Engine_v37"
 local env = (getgenv and getgenv()) or shared
@@ -53,6 +55,7 @@ local Settings = {
 	ShowFOV = true,
 	FOVPulse = true,         -- NEW: FOV Pulse Animation
 	TargetIndicator = true,  -- NEW: Draw Target Indicator
+	Fullbright = false, -- NEW: Full Bright Mode
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -104,6 +107,30 @@ local Styles = {
 	TextMain = Color3.fromRGB(255, 255, 255),
 	TextDark = Color3.fromRGB(160, 165, 180)
 }
+
+local OriginalLighting = {
+	Brightness = Lighting.Brightness,
+	ClockTime = Lighting.ClockTime,
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	GlobalShadows = Lighting.GlobalShadows
+}
+
+local function UpdateFullbright(enabled)
+	if enabled then
+		Lighting.Brightness = 2
+		Lighting.ClockTime = 14
+		Lighting.Ambient = Color3.new(1, 1, 1)
+		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+		Lighting.GlobalShadows = false
+	else
+		Lighting.Brightness = OriginalLighting.Brightness
+		Lighting.ClockTime = OriginalLighting.ClockTime
+		Lighting.Ambient = OriginalLighting.Ambient
+		Lighting.OutdoorAmbient = OriginalLighting.OutdoorAmbient
+		Lighting.GlobalShadows = OriginalLighting.GlobalShadows
+	end
+end
 
 local function SafeConnect(signal, callback)
 	local connection = signal:Connect(callback)
@@ -339,7 +366,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 					WallIgnore[2] = Target.Character
 
 					local Parts = Camera:GetPartsObscuringTarget(WallPoints, WallIgnore)
-					
+
 					if #Parts > 0 then Target = GetClosestPlayer() end
 				end
 			end
@@ -752,8 +779,9 @@ end
 
 local AimPage = RegisterTabContainerPage("Aim Lock")
 local VisPage = RegisterTabContainerPage("Visuals / ESP")
-local LogPage = RegisterTabContainerPage("System Logs") -- NEW: Logger Tab
+local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
+local TestPage = RegisterTabContainerPage("Test")
 local SettPage = RegisterTabContainerPage("Settings")
 
 -- NEW: Logger Write Hook Function
@@ -819,7 +847,7 @@ local function CinematicClose()
 end
 CloseBtn.MouseButton1Click:Connect(CinematicClose)
 
-local function AddDashboardButton(parentPage, configKey, displayTitle, desc, subDesc)
+local function AddDashboardButton(parentPage, configKey, displayTitle, desc, subDesc, customCallback)
 	local state = Settings[configKey]
 
 	local Card = Instance.new("Frame", parentPage)
@@ -898,6 +926,10 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 
 		TweenObj(ToggleHousing, { BackgroundColor3 = current and Styles.Accent or Color3.fromRGB(40, 42, 52) }, 0.25, Enum.EasingStyle.Quint)
 		TweenObj(ToggleCore, { Position = current and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7) }, 0.25, Enum.EasingStyle.Quint)
+
+		if customCallback then
+			customCallback(current)
+		end
 
 		if configKey == "ESPEnabled" or configKey == "Enabled" then
 			RefreshAllESP()
@@ -1060,6 +1092,10 @@ AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal
 AddDashboardSlider(VisPage, "FOVRadius", "Crosshair Threat Radius", 20, 500, "★ Optimal Placement: Low-Medium (Zero-Lag Filtering) (120)", "Adjusts the width scale boundary of your screen targeting frame ring.")
 AddDashboardSlider(VisPage, "ESPTransparency", "ESP Elements Opacity Alpha", 0.0, 1.0, "★ Optimal Placement: Medium High Density Fill (0.4)", "Modulates internal card outline overlay drawing opacity visibility scales.", function()
 	RefreshAllESP()
+end)
+
+AddDashboardButton(TestPage, "Fullbright", "Enable Fullbright", "Makes dark areas fully visible.", "Toggle enhanced lighting visibility.", function(enabled)
+	UpdateFullbright(enabled)
 end)
 
 local BodyPartBtn = Instance.new("TextButton", CustPage)
