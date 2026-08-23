@@ -198,6 +198,9 @@ local DebugTargetRefreshTimer = 0
 local TargetBlocked = false
 local DebugTargetPart = nil
 local DebugTargetBlocked = false
+local AimFOVColor = Color3.fromRGB(0, 160, 255)
+local FOVPulseSpeed = 6
+local FOVSizePulseAmount = 8
 
 local function WispAllESPRemnants()
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -454,7 +457,7 @@ local SystemLogEvent = function(msg) end
 RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
 	pcall(function()
 		deltaTime = deltaTime or 0.016 
-		
+
 		FPSUpdateTimer += deltaTime
 		DebugInfoTimer += deltaTime
 		DebugTargetRefreshTimer += deltaTime
@@ -476,11 +479,22 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		end
 
 		FOVCircle.Position = UserInputService:GetMouseLocation()
-		FOVCircle.Radius = Settings.FOVRadius
 
-		if Settings.Enabled and Aiming and Settings.FOVPulse then
-			FOVCircle.Transparency = 0.65 + math.sin(time() * 6) * 0.35
+		if Settings.Enabled and Aiming then
+			FOVCircle.Color = AimFOVColor
+
+			if Settings.FOVPulse then
+				local pulse = math.sin(time() * FOVPulseSpeed)
+
+				FOVCircle.Radius = Settings.FOVRadius + pulse * FOVSizePulseAmount
+				FOVCircle.Transparency = 0.65 + pulse * 0.35
+			else
+				FOVCircle.Radius = Settings.FOVRadius
+				FOVCircle.Transparency = 1
+			end
 		else
+			FOVCircle.Color = Styles.Accent
+			FOVCircle.Radius = Settings.FOVRadius
 			FOVCircle.Transparency = 1
 		end
 
@@ -492,7 +506,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			if not IsTargetValid(Target) then
 				Target = GetClosestPlayer()
 			end
-			
+
 			if Settings.WallCheckDebug and DebugTargetPart then
 				local debugPos, debugOnScreen = Camera:WorldToScreenPoint(DebugTargetPart.Position)
 
@@ -541,7 +555,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 					else
 						TargetInfoText.Visible = false
 					end
-					
+
 					if Settings.TargetIndicator then
 						local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
 
@@ -975,7 +989,7 @@ local SystemLogEntries = {}
 SystemLogEvent = function(msg)
 	local timeStr = os.date("%H:%M:%S")
 	local LogCard = Instance.new("Frame", LogPage)
-	
+
 	table.insert(SystemLogEntries, LogCard)
 
 	if #SystemLogEntries > 100 then
@@ -984,7 +998,7 @@ SystemLogEvent = function(msg)
 			oldest:Destroy()
 		end
 	end
-	
+
 	LogCard.Size = UDim2.new(0.94, 0, 0, 28)
 	LogCard.BackgroundColor3 = Styles.CardBg
 	LogCard.BorderSizePixel = 0
@@ -1167,7 +1181,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	ValLabel.Size = UDim2.new(0.2, 0, 0, 16)
 	ValLabel.Position = UDim2.new(0.97, -40, 0.06, 0)
 	ValLabel.BackgroundTransparency = 1
-	
+
 	if decimalPlaces then
 		ValLabel.Text = string.format("%." .. decimalPlaces .. "f", initial)
 	elseif max == 100 then
@@ -1177,7 +1191,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	else
 		ValLabel.Text = tostring(initial)
 	end
-	
+
 	ValLabel.Font = Enum.Font.GothamBold
 	ValLabel.TextSize = 11
 	ValLabel.TextColor3 = Styles.Accent
@@ -1530,7 +1544,7 @@ HookButtonAnimations(ResetConfigBtn, Color3.fromRGB(50, 40, 35), Color3.fromRGB(
 ResetConfigBtn.MouseButton1Click:Connect(function()
 	for key, value in pairs(DefaultSettings) do Settings[key] = value end
 	for _, updater in ipairs(UIUpdaters) do updater() end
-	
+
 	UpdateFullbright(Settings.Fullbright)
 	RefreshAllESP()
 
