@@ -36,6 +36,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
 local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -58,6 +60,11 @@ local Settings = {
 	ShowFPS = false,
 	WallCheckDebug = false,
 	TargetInfo = false,
+	ApplyWalkSpeed = false,
+	ApplyJumpPower = false,
+	Noclip = false,
+	PlayerWalkSpeed = Humanoid.WalkSpeed,
+	PlayerJumpPower = Humanoid.JumpPower,
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -71,10 +78,18 @@ local Settings = {
 	AccentColorIndex = 1
 }
 
--- Default state backup for reset functionality
 local DefaultSettings = {}
 for k, v in pairs(Settings) do DefaultSettings[k] = v end
-local UIUpdaters = {} -- Stores dynamic UI update hooks
+
+if SavedState and SavedState.Settings then
+	for key, value in pairs(SavedState.Settings) do
+		if Settings[key] ~= nil then
+			Settings[key] = value
+		end
+	end
+end
+
+local UIUpdaters = {}
 
 local Aiming = false
 local Target = nil
@@ -186,7 +201,10 @@ TargetInfoText.ZIndex = 3
 
 local FPSUpdateTimer = 0
 local DebugInfoTimer = 0
+local DebugTargetRefreshTimer = 0
 local TargetBlocked = false
+local DebugTargetPart = nil
+local DebugTargetBlocked = false
 
 local function WispAllESPRemnants()
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -283,11 +301,157 @@ local function ControlClick(press)
 	end
 end
 
+local OriginalWalkSpeed = nil
+local OriginalJumpPower = nil
+local OriginalUseJumpPower = nil
+local ModifierCharacter = nil
+local CharacterParts = {}
+local CollisionDefaults = {}
+
+local function GetLocalHumanoid()
+	local character = LocalPlayer.Character
+	if not character then return nil end
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function RefreshWalkSpeed()
+	local humanoid = GetLocalHumanoid()
+	if not humanoid then return end
+
+	if Settings.ApplyWalkSpeed then
+		humanoid.WalkSpeed = Settings.PlayerWalkSpeed
+	elseif OriginalWalkSpeed ~= nil then
+		humanoid.WalkSpeed = OriginalWalkSpeed
+	end
+end
+
+local function RefreshJumpPower()
+	local humanoid = GetLocalHumanoid()
+	if not humanoid then return end
+
+	if Settings.ApplyJumpPower then
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = Settings.PlayerJumpPower
+	else
+		if OriginalUseJumpPower ~= nil then humanoid.UseJumpPower = OriginalUseJumpPower end
+		if OriginalJumpPower ~= nil then humanoid.JumpPower = OriginalJumpPower end
+	end
+end
+
+local function RestoreNoclip()
+	for part, originalCanCollide in pairs(CollisionDefaults) do
+		if part and part.Parent then
+			part.CanCollide = originalCanCollide
+		end
+	end
+end
+
+local function RefreshNoclip()
+	if Settings.Noclip then
+		for _, part in ipairs(CharacterParts) do
+			if part and part.Parent then
+				part.CanCollide = false
+			end
+		end
+	else
+		RestoreNoclip()
+	end
+end
+
+local function RestoreCharacterModifiers()
+	local humanoid = GetLocalHumanoid()
+
+	if humanoid then
+		if OriginalWalkSpeed ~= nil then humanoid.WalkSpeed = OriginalWalkSpeed end
+		if OriginalUseJumpPower ~= nil then humanoid.UseJumpPower = OriginalUseJumpPower end
+		if OriginalJumpPower ~= nil then humanoid.JumpPower = OriginalJumpPower end
+	end
+
+	RestoreNoclip()
+end
+
+local function SetupModifierCharacter(character)
+	ModifierCharacter = character
+
+	table.clear(CharacterParts)
+	table.clear(CollisionDefaults)
+
+	local humanoid = character:WaitForChild("Humanoid", 10)
+
+	if humanoid then
+		OriginalWalkSpeed = humanoid.WalkSpeed
+		OriginalJumpPower = humanoid.JumpPower
+		OriginalUseJumpPower = humanoid.UseJumpPower
+	end
+
+	for _, object in ipairs(character:GetDescendants()) do
+		if object:IsA("BasePart") then
+			table.insert(CharacterParts, object)
+			CollisionDefaults[object] = object.CanCollide
+		end
+	end
+
+	SafeConnect(character.DescendantAdded, function(object)
+		if character ~= ModifierCharacter then return end
+
+		if object:IsA("BasePart") then
+			table.insert(CharacterParts, object)
+			CollisionDefaults[object] = object.CanCollide
+
+			if Settings.Noclip then
+				object.CanCollide = false
+			end
+		end
+	end)
+
+	task.defer(function()
+		RefreshWalkSpeed()
+		RefreshJumpPower()
+		RefreshNoclip()
+	end)
+end
+
+if LocalPlayer.Character then
+	task.spawn(SetupModifierCharacter, LocalPlayer.Character)
+end
+
+SafeConnect(LocalPlayer.CharacterAdded, SetupModifierCharacter)
+
+SafeConnect(RunService.Heartbeat, function()
+	if Settings.ApplyWalkSpeed then
+		local humanoid = GetLocalHumanoid()
+		if humanoid and humanoid.WalkSpeed ~= Settings.PlayerWalkSpeed then
+			humanoid.WalkSpeed = Settings.PlayerWalkSpeed
+		end
+	end
+
+	if Settings.ApplyJumpPower then
+		local humanoid = GetLocalHumanoid()
+
+		if humanoid then
+			humanoid.UseJumpPower = true
+
+			if humanoid.JumpPower ~= Settings.PlayerJumpPower then
+				humanoid.JumpPower = Settings.PlayerJumpPower
+			end
+		end
+	end
+
+	if Settings.Noclip then
+		for _, part in ipairs(CharacterParts) do
+			if part and part.Parent and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
 	pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
 	for _, con in ipairs(GlobalConnections) do if con and con.Disconnect then pcall(function() con:Disconnect() end) end end
 	ControlClick(false)
+	RestoreCharacterModifiers()
 	pcall(function() FOVCircle:Remove() end)
 	pcall(function() TargetDot:Remove() end)
 	pcall(function()
@@ -297,6 +461,7 @@ local function UniversalDestruct()
 	pcall(function() FPSDisplay:Remove() end)
 	pcall(function() WallDebugLine:Remove() end)
 	pcall(function() TargetInfoText:Remove() end)
+	UpdateFullbright(false)
 	WispAllESPRemnants()
 end
 env[CurrentScriptID] = UniversalDestruct 
@@ -314,10 +479,8 @@ end
 local function IsEnemy(player)
 	if player == LocalPlayer then return false end
 
-	if player.Team ~= nil and LocalPlayer.Team ~= nil then
-		if player.Team == LocalPlayer.Team or player.TeamColor == LocalPlayer.TeamColor then
-			return false
-		end
+	if LocalPlayer.Team and player.Team then
+		return player.Team ~= LocalPlayer.Team
 	end
 
 	return true
@@ -350,6 +513,10 @@ local function GetClosestPlayer()
 	local mousePosition = UserInputService:GetMouseLocation()
 	local closestPlayer = nil
 	local closestScreenDistance = Settings.FOVRadius
+	local closestDebugDistance = Settings.FOVRadius
+
+	DebugTargetPart = nil
+	DebugTargetBlocked = false
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if not IsEnemy(player) then continue end
@@ -372,8 +539,18 @@ local function GetClosestPlayer()
 		local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
 		local screenDistance = (targetScreenPosition - mousePosition).Magnitude
 
-		if screenDistance > closestScreenDistance then continue end
-		if not IsTargetVisible(character, targetPart) then continue end
+		if screenDistance > Settings.FOVRadius then continue end
+
+		local visible = IsTargetVisible(character, targetPart)
+
+		if screenDistance < closestDebugDistance then
+			closestDebugDistance = screenDistance
+			DebugTargetPart = targetPart
+			DebugTargetBlocked = not visible
+		end
+
+		if not visible then continue end
+		if screenDistance >= closestScreenDistance then continue end
 
 		closestScreenDistance = screenDistance
 		closestPlayer = player
@@ -425,6 +602,12 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		
 		FPSUpdateTimer += deltaTime
 		DebugInfoTimer += deltaTime
+		DebugTargetRefreshTimer += deltaTime
+
+		if Settings.WallCheckDebug and DebugTargetRefreshTimer >= 0.1 then
+			GetClosestPlayer()
+			DebugTargetRefreshTimer = 0
+		end
 
 		if Settings.ShowFPS then
 			if FPSUpdateTimer >= 0.25 then
@@ -437,37 +620,39 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			FPSDisplay.Visible = false
 		end
 
-		-- NEW: FOV Pulse Animation Math
 		FOVCircle.Position = UserInputService:GetMouseLocation()
+		FOVCircle.Radius = Settings.FOVRadius
+
 		if Settings.Enabled and Aiming and Settings.FOVPulse then
-			local pulseOffset = math.sin(tick() * 6) * (Settings.FOVRadius * 0.06)
-			FOVCircle.Radius = Settings.FOVRadius + pulseOffset
-			FOVCircle.Transparency = 0.5 + (math.sin(tick() * 6) * 0.5)
+			FOVCircle.Transparency = 0.65 + math.sin(time() * 6) * 0.35
 		else
-			FOVCircle.Radius = Settings.FOVRadius
 			FOVCircle.Transparency = 1
 		end
+
 		FOVCircle.Visible = Settings.Enabled and Settings.ShowFOV
 
 		if Settings.Enabled and Aiming then
-			local isTargetValid = false
 			TargetBlocked = false
+
 			if not IsTargetValid(Target) then
 				Target = GetClosestPlayer()
 			end
+			
+			if Settings.WallCheckDebug and DebugTargetPart then
+				local debugPos, debugOnScreen = Camera:WorldToScreenPoint(DebugTargetPart.Position)
 
-			if not isTargetValid then Target = GetClosestPlayer()
-			else
-				if Settings.WallCheck and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-					WallPoints[1] = Target.Character.HumanoidRootPart.Position
-					WallIgnore[1] = LocalPlayer.Character
-					WallIgnore[2] = Target.Character
+				if debugOnScreen and debugPos.Z > 0 then
+					local mousePosition = UserInputService:GetMouseLocation()
 
-					local Parts = Camera:GetPartsObscuringTarget(WallPoints, WallIgnore)
-					TargetBlocked = #Parts > 0
-
-					if TargetBlocked then Target = GetClosestPlayer() end
+					WallDebugLine.From = mousePosition
+					WallDebugLine.To = Vector2.new(debugPos.X, debugPos.Y)
+					WallDebugLine.Color = DebugTargetBlocked and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 120)
+					WallDebugLine.Visible = true
+				else
+					WallDebugLine.Visible = false
 				end
+			else
+				WallDebugLine.Visible = false
 			end
 
 			if Target and Target.Character then
@@ -476,19 +661,8 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 					-- NEW: Draw Target Indicator Module
 					local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
 
-					if Settings.WallCheckDebug and onScreen then
-						local mousePosition = UserInputService:GetMouseLocation()
-
-						WallDebugLine.From = mousePosition
-						WallDebugLine.To = Vector2.new(screenPos.X, screenPos.Y)
-						WallDebugLine.Color = TargetBlocked and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 120)
-						WallDebugLine.Visible = true
-					else
-						WallDebugLine.Visible = false
-					end
-
 					if Settings.TargetInfo and onScreen then
-						TargetInfoText.Position = Vector2.new(screenPos.X + 12, screenPos.Y + 12)
+						TargetInfoText.Position = Vector2.new(pos.X + 12, pos.Y + 12)
 						TargetInfoText.Visible = true
 
 						if DebugInfoTimer >= 0.1 then
@@ -698,7 +872,7 @@ Title.Size = UDim2.new(0.3, 0, 1, 0)
 Title.Position = UDim2.new(0.03, 0, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Styles.TextMain
-Title.Text = "Aim Hub Suite"
+Title.Text = "Aehmre's Aimbot Hub"
 Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -749,6 +923,17 @@ Sidebar.BackgroundColor3 = Styles.SidebarBg
 Sidebar.BackgroundTransparency = Settings.MenuTransparency
 Sidebar.BorderSizePixel = 0
 
+local SidebarContainer = Instance.new("ScrollingFrame", Sidebar)
+SidebarContainer.Size = UDim2.new(1, 0, 1, -170)
+SidebarContainer.Position = UDim2.new(0, 0, 0, 60)
+SidebarContainer.BackgroundTransparency = 1
+SidebarContainer.BorderSizePixel = 0
+SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+SidebarContainer.ScrollBarThickness = 2
+SidebarContainer.ScrollBarImageColor3 = Styles.Accent
+SidebarContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+SidebarContainer.ClipsDescendants = true
+
 local ProfileContainer = Instance.new("Frame", Sidebar)
 ProfileContainer.Size = UDim2.new(1, 0, 0, 60)
 ProfileContainer.BackgroundTransparency = 1
@@ -782,15 +967,14 @@ ActiveDotLabel.TextSize = 10
 ActiveDotLabel.TextColor3 = Styles.Accent
 ActiveDotLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-local SidebarContainer = Instance.new("Frame", Sidebar)
-SidebarContainer.Size = UDim2.new(1, 0, 1, -170)
-SidebarContainer.Position = UDim2.new(0, 0, 0, 60)
-SidebarContainer.BackgroundTransparency = 1
-
 local SideLayout = Instance.new("UIListLayout", SidebarContainer)
 SideLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SideLayout.Padding = UDim.new(0, 6)
 SideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+SideLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, SideLayout.AbsoluteContentSize.Y + 12)
+end)
 
 local RightContentWindow = Instance.new("Frame", WindowContainerFrame)
 RightContentWindow.Name = "RightContentWindow"
@@ -926,6 +1110,7 @@ end
 
 local AimPage = RegisterTabContainerPage("Aim Lock")
 local VisPage = RegisterTabContainerPage("Visuals / ESP")
+local PlayerPage = RegisterTabContainerPage("Player & Character")
 local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
 local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
@@ -1251,6 +1436,30 @@ AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line 
 
 AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
 
+AddDashboardButton(PlayerPage, "ApplyWalkSpeed", "Apply WalkSpeed", "Enables custom character movement speed.", "Turn this on before WalkSpeed is applied.", function()
+	RefreshWalkSpeed()
+end)
+
+AddDashboardSlider(PlayerPage, "PlayerWalkSpeed", "Player WalkSpeed", 1, 250, "Controls the local Humanoid WalkSpeed.", "Only applied while Apply WalkSpeed is enabled.", function()
+	if Settings.ApplyWalkSpeed then
+		RefreshWalkSpeed()
+	end
+end)
+
+AddDashboardButton(PlayerPage, "ApplyJumpPower", "Apply JumpPower", "Enables custom character jump power.", "Turn this on before JumpPower is applied.", function()
+	RefreshJumpPower()
+end)
+
+AddDashboardSlider(PlayerPage, "PlayerJumpPower", "Player JumpPower", 0, 250, "Controls the local Humanoid JumpPower.", "Only applied while Apply JumpPower is enabled.", function()
+	if Settings.ApplyJumpPower then
+		RefreshJumpPower()
+	end
+end)
+
+AddDashboardButton(PlayerPage, "Noclip", "Noclip", "Disables character collision while enabled.", "Allows movement through collidable geometry.", function()
+	RefreshNoclip()
+end)
+
 local BodyPartBtn = Instance.new("TextButton", CustPage)
 BodyPartBtn.Size = UDim2.new(0.94, 0, 0, 36)
 BodyPartBtn.BackgroundColor3 = Styles.CardBg
@@ -1297,6 +1506,8 @@ CycleColorBtn.MouseButton1Click:Connect(function()
 	Styles.Accent = currentAccent
 	FOVCircle.Color = currentAccent
 	TargetDot.Color = currentAccent
+	FPSDisplay.Color = currentAccent
+	TargetInfoText.Color = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
 	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
 	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
@@ -1336,6 +1547,9 @@ SaveStroke.Color = Styles.Accent
 HookButtonAnimations(SaveConfigBtn, Color3.fromRGB(35, 40, 50), Color3.fromRGB(45, 50, 65))
 
 SaveConfigBtn.MouseButton1Click:Connect(function()
+	env[CurrentScriptID .. "_DataPacket"] = {
+		Settings = table.clone(Settings)
+	}
 	TweenObj(SaveConfigBtn, { BackgroundColor3 = Color3.fromRGB(50, 200, 100) }, 0.15)
 	SaveConfigBtn.Text = "CONFIGURATION SAVED SUCCESSFULLY"
 	SystemLogEvent("Configuration Profile Saved.")
@@ -1359,11 +1573,19 @@ HookButtonAnimations(ResetConfigBtn, Color3.fromRGB(50, 40, 35), Color3.fromRGB(
 ResetConfigBtn.MouseButton1Click:Connect(function()
 	for key, value in pairs(DefaultSettings) do Settings[key] = value end
 	for _, updater in ipairs(UIUpdaters) do updater() end
+	
+	UpdateFullbright(Settings.Fullbright)
+	RefreshAllESP()
+	RefreshWalkSpeed()
+	RefreshJumpPower()
+	RefreshNoclip()
 
 	local currentAccent = AccentPresets[Settings.AccentColorIndex]
 	Styles.Accent = currentAccent
 	FOVCircle.Color = currentAccent
 	TargetDot.Color = currentAccent
+	FPSDisplay.Color = currentAccent
+	TargetInfoText.Color = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
 	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
 	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
