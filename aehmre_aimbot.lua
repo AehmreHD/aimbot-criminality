@@ -8,7 +8,7 @@ local SavedState = nil
 
 local KeyAPIURL = "http://127.0.0.1:5000"
 local KeyProduct = "aimbotHub"
-local DiscordInvite = "https://discord.gg/YOUR_INVITE"
+local DiscordInvite = "https://discord.gg/hjjrsKJ8AA"
 local StoredSessionToken = env[CurrentScriptID .. "_AuthSession"]
 local SessionToken = StoredSessionToken
 local SessionExpiresUnix = nil
