@@ -301,61 +301,118 @@ local function UniversalDestruct()
 end
 env[CurrentScriptID] = UniversalDestruct 
 
-local WallPoints = table.create(1)
-local WallIgnore = table.create(2)
+local AimRaycastParams = RaycastParams.new()
+AimRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+AimRaycastParams.IgnoreWater = true
 
---// Target Coordinate Acquisition Math Block
-local function GetClosestPlayer()
-	local MaximumDistance = Settings.MaxDistance
-	local TargetPlayer = nil
+local RaycastIgnore = table.create(2)
 
-	local character = LocalPlayer.Character
-	if not character then return nil end
+local function GetTargetPart(character)
+	return character:FindFirstChild(Settings.TargetPart) or character:FindFirstChild("HumanoidRootPart")
+end
 
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not root then return nil end
+local function IsEnemy(player)
+	if player == LocalPlayer then return false end
 
-	local MyPos = root.Position
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			local targetCharacter = player.Character
-
-			if targetCharacter then
-				local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
-				local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
-
-				if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-					if player.Team ~= nil and LocalPlayer.Team ~= nil then
-						if player.Team == LocalPlayer.Team or player.TeamColor == LocalPlayer.TeamColor then
-							continue
-						end
-					end
-
-					local Distance = (targetRoot.Position - MyPos).Magnitude
-
-					if Distance < MaximumDistance then
-						if Settings.WallCheck then
-							WallPoints[1] = targetRoot.Position
-							WallIgnore[1] = character
-							WallIgnore[2] = targetCharacter
-
-							local parts = Camera:GetPartsObscuringTarget(WallPoints, WallIgnore)
-
-							if #parts > 0 then
-								continue
-							end
-						end
-
-						MaximumDistance = Distance
-						TargetPlayer = player
-					end
-				end
-			end
+	if player.Team ~= nil and LocalPlayer.Team ~= nil then
+		if player.Team == LocalPlayer.Team or player.TeamColor == LocalPlayer.TeamColor then
+			return false
 		end
 	end
 
-	return TargetPlayer
+	return true
+end
+
+local function IsTargetVisible(character, targetPart)
+	if not Settings.WallCheck then return true end
+
+	local localCharacter = LocalPlayer.Character
+	if not localCharacter then return false end
+
+	RaycastIgnore[1] = localCharacter
+	RaycastIgnore[2] = character
+	AimRaycastParams.FilterDescendantsInstances = RaycastIgnore
+
+	local origin = Camera.CFrame.Position
+	local direction = targetPart.Position - origin
+	local result = workspace:Raycast(origin, direction, AimRaycastParams)
+
+	return result == nil
+end
+
+local function GetClosestPlayer()
+	local localCharacter = LocalPlayer.Character
+	if not localCharacter then return nil end
+
+	local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
+	if not localRoot then return nil end
+
+	local mousePosition = UserInputService:GetMouseLocation()
+	local closestPlayer = nil
+	local closestScreenDistance = Settings.FOVRadius
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if not IsEnemy(player) then continue end
+
+		local character = player.Character
+		if not character then continue end
+
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local targetPart = GetTargetPart(character)
+
+		if not humanoid or humanoid.Health <= 0 or not root or not targetPart then continue end
+
+		local worldDistance = (root.Position - localRoot.Position).Magnitude
+		if worldDistance > Settings.MaxDistance then continue end
+
+		local screenPosition, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+		if not onScreen or screenPosition.Z <= 0 then continue end
+
+		local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
+		local screenDistance = (targetScreenPosition - mousePosition).Magnitude
+
+		if screenDistance > closestScreenDistance then continue end
+		if not IsTargetVisible(character, targetPart) then continue end
+
+		closestScreenDistance = screenDistance
+		closestPlayer = player
+	end
+
+	return closestPlayer
+end
+
+local function IsTargetValid(player)
+	if not player or not IsEnemy(player) then return false end
+
+	local localCharacter = LocalPlayer.Character
+	local character = player.Character
+
+	if not localCharacter or not character then return false end
+
+	local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local targetPart = GetTargetPart(character)
+
+	if not localRoot or not root or not humanoid or humanoid.Health <= 0 or not targetPart then
+		return false
+	end
+
+	local worldDistance = (root.Position - localRoot.Position).Magnitude
+	if worldDistance > Settings.MaxDistance then return false end
+
+	local screenPosition, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+	if not onScreen or screenPosition.Z <= 0 then return false end
+
+	local mousePosition = UserInputService:GetMouseLocation()
+	local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
+	local screenDistance = (targetScreenPosition - mousePosition).Magnitude
+
+	if screenDistance > Settings.FOVRadius then return false end
+	if not IsTargetVisible(character, targetPart) then return false end
+
+	return true
 end
 
 -- Temporary logger hook (defined completely lower down, stubbed here)
@@ -395,13 +452,8 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		if Settings.Enabled and Aiming then
 			local isTargetValid = false
 			TargetBlocked = false
-			if Target and Target.Character and Target.Character:FindFirstChild("HumanoidRootPart") then
-				local targetHum = Target.Character:FindFirstChildOfClass("Humanoid")
-				if targetHum and targetHum.Health > 0 then
-					if not (Target.Team ~= nil and LocalPlayer.Team ~= nil and (Target.Team == LocalPlayer.Team or Target.TeamColor == LocalPlayer.TeamColor)) then
-						isTargetValid = true
-					end
-				end
+			if not IsTargetValid(Target) then
+				Target = GetClosestPlayer()
 			end
 
 			if not isTargetValid then Target = GetClosestPlayer()
@@ -422,7 +474,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				local HitPart = Target.Character:FindFirstChild(Settings.TargetPart) or Target.Character:FindFirstChild("HumanoidRootPart")
 				if HitPart then
 					-- NEW: Draw Target Indicator Module
-					local screenPos, onScreen = Camera:WorldToViewportPoint(HitPart.Position)
+					local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
 
 					if Settings.WallCheckDebug and onScreen then
 						local mousePosition = UserInputService:GetMouseLocation()
@@ -462,12 +514,17 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 					end
 					
 					if Settings.TargetIndicator then
-						local pos, onScreen = Camera:WorldToViewportPoint(HitPart.Position)
+						local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
+
 						if onScreen then
 							TargetDot.Position = Vector2.new(pos.X, pos.Y)
 							TargetDot.Visible = true
-						else TargetDot.Visible = false end
-					else TargetDot.Visible = false end
+						else
+							TargetDot.Visible = false
+						end
+					else
+						TargetDot.Visible = false
+					end
 
 					-- NEW: Kill Feed Logger Hooks
 					if Target ~= LastLoggedTarget then
@@ -527,7 +584,7 @@ local ShortcutList = nil
 local function UpdateLeftPanelShortcuts()
 	if ShortcutList then
 		local statusText = Aiming and "ON" or "OFF"
-		ShortcutList.Text = string.format("[E] Aim Lock: %s\n[RShift] Minimize UI", statusText)
+		ShortcutList.Text = string.format("[B] Aim Lock: %s\n[L] Toggle UI", statusText)
 	end
 end
 
