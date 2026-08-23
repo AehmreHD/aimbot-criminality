@@ -63,6 +63,7 @@ local Settings = {
 	ApplyWalkSpeed = false,
 	ApplyJumpPower = false,
 	Noclip = false,
+	CharacterUpdateInterval = 1.00,
 	PlayerWalkSpeed = Humanoid.WalkSpeed,
 	PlayerJumpPower = Humanoid.JumpPower,
 	TargetPart = "Head", 
@@ -417,37 +418,25 @@ end
 
 SafeConnect(LocalPlayer.CharacterAdded, SetupModifierCharacter)
 
-SafeConnect(RunService.Heartbeat, function()
-	if Settings.ApplyWalkSpeed then
-		local humanoid = GetLocalHumanoid()
-		if humanoid and humanoid.WalkSpeed ~= Settings.PlayerWalkSpeed then
-			humanoid.WalkSpeed = Settings.PlayerWalkSpeed
+local CharacterUpdaterRunning = true
+
+task.spawn(function()
+	while CharacterUpdaterRunning do
+		if Settings.ApplyWalkSpeed then
+			RefreshWalkSpeed()
 		end
-	end
 
-	if Settings.ApplyJumpPower then
-		local humanoid = GetLocalHumanoid()
-
-		if humanoid then
-			humanoid.UseJumpPower = true
-
-			if humanoid.JumpPower ~= Settings.PlayerJumpPower then
-				humanoid.JumpPower = Settings.PlayerJumpPower
-			end
+		if Settings.ApplyJumpPower then
+			RefreshJumpPower()
 		end
-	end
 
-	if Settings.Noclip then
-		for _, part in ipairs(CharacterParts) do
-			if part and part.Parent and part.CanCollide then
-				part.CanCollide = false
-			end
-		end
+		task.wait(math.clamp(Settings.CharacterUpdateInterval, 0.15, 5))
 	end
 end)
 
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
+	CharacterUpdaterRunning = false
 	pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
 	for _, con in ipairs(GlobalConnections) do if con and con.Disconnect then pcall(function() con:Disconnect() end) end end
 	ControlClick(false)
@@ -486,9 +475,7 @@ local function IsEnemy(player)
 	return true
 end
 
-local function IsTargetVisible(character, targetPart)
-	if not Settings.WallCheck then return true end
-
+local function HasLineOfSight(character, targetPart)
 	local localCharacter = LocalPlayer.Character
 	if not localCharacter then return false end
 
@@ -501,6 +488,11 @@ local function IsTargetVisible(character, targetPart)
 	local result = workspace:Raycast(origin, direction, AimRaycastParams)
 
 	return result == nil
+end
+
+local function IsTargetVisible(character, targetPart)
+	if not Settings.WallCheck then return true end
+	return HasLineOfSight(character, targetPart)
 end
 
 local function GetClosestPlayer()
@@ -541,12 +533,13 @@ local function GetClosestPlayer()
 
 		if screenDistance > Settings.FOVRadius then continue end
 
-		local visible = IsTargetVisible(character, targetPart)
+		local hasLineOfSight = HasLineOfSight(character, targetPart)
+		local visible = not Settings.WallCheck or hasLineOfSight
 
 		if screenDistance < closestDebugDistance then
 			closestDebugDistance = screenDistance
 			DebugTargetPart = targetPart
-			DebugTargetBlocked = not visible
+			DebugTargetBlocked = not hasLineOfSight
 		end
 
 		if not visible then continue end
@@ -736,7 +729,6 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				end
 			else
 				TargetDot.Visible = false
-				WallDebugLine.Visible = false
 				TargetInfoText.Visible = false
 				if IsShooting then IsShooting = false ControlClick(false) end
 			end
@@ -1116,10 +1108,22 @@ local CustPage = RegisterTabContainerPage("Customization")
 local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 local SettPage = RegisterTabContainerPage("Settings")
 
+local SystemLogEntries = {}
+
 -- NEW: Logger Write Hook Function
 SystemLogEvent = function(msg)
 	local timeStr = os.date("%H:%M:%S")
 	local LogCard = Instance.new("Frame", LogPage)
+	
+	table.insert(SystemLogEntries, LogCard)
+
+	if #SystemLogEntries > 100 then
+		local oldest = table.remove(SystemLogEntries, 1)
+		if oldest then
+			oldest:Destroy()
+		end
+	end
+	
 	LogCard.Size = UDim2.new(0.94, 0, 0, 28)
 	LogCard.BackgroundColor3 = Styles.CardBg
 	LogCard.BorderSizePixel = 0
@@ -1216,6 +1220,7 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 	SubLabel.BackgroundTransparency = 1
 	SubLabel.Text = subDesc
 	SubLabel.Font = Enum.Font.Gotham
+	SubLabel.RichText = true
 	SubLabel.TextSize = 9
 	SubLabel.TextColor3 = Styles.Accent
 	SubLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1276,7 +1281,7 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 	end)
 end
 
-local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max, desc, subDesc, customCallback)
+local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max, desc, subDesc, customCallback, decimalPlaces)
 	local initial = Settings[configKey]
 
 	local Card = Instance.new("Frame", parentPage)
@@ -1301,7 +1306,17 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	ValLabel.Size = UDim2.new(0.2, 0, 0, 16)
 	ValLabel.Position = UDim2.new(0.97, -40, 0.06, 0)
 	ValLabel.BackgroundTransparency = 1
-	ValLabel.Text = (max == 100 or max == 5000) and tostring(math.floor(initial)) or tostring(initial)
+	
+	if decimalPlaces then
+		ValLabel.Text = string.format("%." .. decimalPlaces .. "f", initial)
+	elseif max == 100 then
+		ValLabel.Text = tostring(math.floor(initial) / 100)
+	elseif max == 5000 then
+		ValLabel.Text = tostring(math.floor(initial))
+	else
+		ValLabel.Text = tostring(initial)
+	end
+	
 	ValLabel.Font = Enum.Font.GothamBold
 	ValLabel.TextSize = 11
 	ValLabel.TextColor3 = Styles.Accent
@@ -1361,12 +1376,24 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	local function UpdateValue(rawPercentage, animate)
 		local percentage = math.clamp(rawPercentage, 0, 1)
 		local currentVal = min + (percentage * (max - min))
-		local rounded = (max == 100 or max == 5000 or max == 5) and math.floor(currentVal) or math.floor(currentVal * 100) / 100
+		local rounded
 
-		if max == 100 then ValLabel.Text = tostring(rounded / 100)
-		else ValLabel.Text = tostring(rounded) end
+		if decimalPlaces then
+			local factor = 10 ^ decimalPlaces
+			rounded = math.floor(currentVal * factor + 0.5) / factor
+		else
+			rounded = (max == 100 or max == 5000 or max == 5) and math.floor(currentVal) or math.floor(currentVal * 100) / 100
+		end
 
-		Settings[configKey] = currentVal
+		if decimalPlaces then
+			ValLabel.Text = string.format("%." .. decimalPlaces .. "f", rounded)
+		elseif max == 100 then
+			ValLabel.Text = tostring(rounded / 100)
+		else
+			ValLabel.Text = tostring(rounded)
+		end
+
+		Settings[configKey] = decimalPlaces and rounded or currentVal
 		if customCallback then customCallback(currentVal) end
 
 		if animate then
@@ -1435,6 +1462,18 @@ AddDashboardButton(TestPage, "ShowFPS", "Show FPS", "Displays your current frame
 AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line to the current aim target.", "Green = visible, red = blocked by geometry.")
 
 AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
+
+AddDashboardSlider(
+	PlayerPage,
+	"CharacterUpdateInterval",
+	"WalkSpeed & JumpPower Update Interval",
+	0.15,
+	5,
+	"Controls how often WalkSpeed and JumpPower are re-applied.",
+	'<font color="rgb(255, 95, 95)"><b>Warning:</b> Very short intervals may cause lag or freezing.</font>',
+	nil,
+	2
+)
 
 AddDashboardButton(PlayerPage, "ApplyWalkSpeed", "Apply WalkSpeed", "Enables custom character movement speed.", "Turn this on before WalkSpeed is applied.", function()
 	RefreshWalkSpeed()
@@ -1508,6 +1547,7 @@ CycleColorBtn.MouseButton1Click:Connect(function()
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
+	SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
 	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
 	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
@@ -1586,6 +1626,7 @@ ResetConfigBtn.MouseButton1Click:Connect(function()
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
+	SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
 	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
 	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
