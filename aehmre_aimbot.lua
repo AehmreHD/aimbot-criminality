@@ -64,6 +64,9 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PathfindingService = game:GetService("PathfindingService")
+local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -91,6 +94,12 @@ local Settings = {
 	TargetInfo = false,
 	DetectPlayers = true,
 	DetectNPCs = false,
+	FarmEnabled = false,
+	FarmAutoMoney = false,
+	FarmInvisibility = false,
+	FarmAntiAFK = false,
+	FarmSafeESP = false,
+	FarmESPTextSize = 20,
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -184,6 +193,615 @@ local function TweenObj(obj, goal, duration, style, dir)
 	local tween = TweenService:Create(obj, info, goal)
 	tween:Play()
 	return tween
+end
+
+
+local FarmMoveSpeed = 22
+local FarmPickupDistance = 8
+local FarmIgnoreDuration = 60
+local FarmLogHook = nil
+local FarmLoopRunning = false
+local FarmAutoMoneyRunning = false
+local FarmAntiAFKConnection = nil
+local FarmInvisConnection = nil
+local FarmInvisAnimTrack = nil
+local FarmInvisOriginalTransparency = {}
+local FarmInvisParts = {}
+local FarmSafeESPRunning = false
+local FarmSafeESPElements = {}
+local FarmProcessed = {}
+local FarmTempIgnored = {}
+local FarmFolderCache = nil
+local FarmFolderLastSearch = 0
+local FarmStatus = "Idle"
+
+local function FarmLog(message)
+	print("[Farm]", message)
+	if FarmLogHook then
+		FarmLogHook("Farm: " .. message)
+	end
+end
+
+local function GetFarmCharacter()
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	return character, humanoid, hrp
+end
+
+local function HasFarmTool(toolName)
+	local backpack = LocalPlayer:FindFirstChild("Backpack")
+	local character = LocalPlayer.Character
+	return (backpack and backpack:FindFirstChild(toolName)) or (character and character:FindFirstChild(toolName))
+end
+
+local function EquipFarmTool(toolName)
+	local backpack = LocalPlayer:FindFirstChild("Backpack")
+	local tool = backpack and backpack:FindFirstChild(toolName)
+	local character, humanoid = GetFarmCharacter()
+	if not tool or not character or not humanoid then return false end
+	local success = pcall(function()
+		humanoid:EquipTool(tool)
+	end)
+	if success then task.wait(0.5) end
+	return success
+end
+
+local function FindFarmFolder()
+	if FarmFolderCache and FarmFolderCache.Parent then return FarmFolderCache end
+	if tick() - FarmFolderLastSearch < 2 then return nil end
+	FarmFolderLastSearch = tick()
+	local map = workspace:FindFirstChild("Map")
+	local filter = workspace:FindFirstChild("Filter")
+	local folder = (map and map:FindFirstChild("BredMakurz")) or (filter and filter:FindFirstChild("BredMakurz"))
+	if not folder then
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if object:IsA("Folder") and object.Name == "BredMakurz" then
+				folder = object
+				break
+			end
+		end
+	end
+	FarmFolderCache = folder
+	return folder
+end
+
+local function IsFarmTargetAvailable(object)
+	if not object or not object.Parent then return false end
+	if FarmProcessed[object] then return false end
+	local ignoredUntil = FarmTempIgnored[object]
+	if ignoredUntil then
+		if tick() < ignoredUntil then return false end
+		FarmTempIgnored[object] = nil
+	end
+	local name = object.Name:lower()
+	if not name:find("safe") and not name:find("register") then return false end
+	local values = object:FindFirstChild("Values")
+	local broken = values and values:FindFirstChild("Broken")
+	if not broken or broken.Value then return false end
+	local mainPart = object:FindFirstChild("MainPart") or object.PrimaryPart or object:FindFirstChildOfClass("BasePart")
+	if not mainPart or mainPart.Position.Y < 4.8 then return false end
+	return true, mainPart
+end
+
+local function GetNearestFarmTarget()
+	local folder = FindFarmFolder()
+	local _, humanoid, hrp = GetFarmCharacter()
+	if not folder or not humanoid or humanoid.Health <= 0 or not hrp then return nil end
+	local closestObject = nil
+	local closestPart = nil
+	local closestDistance = math.huge
+	for _, object in ipairs(folder:GetChildren()) do
+		local available, mainPart = IsFarmTargetAvailable(object)
+		if available then
+			local distance = (mainPart.Position - hrp.Position).Magnitude
+			if distance < closestDistance then
+				closestDistance = distance
+				closestObject = object
+				closestPart = mainPart
+			end
+		end
+	end
+	return closestObject, closestPart
+end
+
+local function GetFarmPositionInFront(targetPart, fromPosition)
+	if not targetPart then return nil end
+	local look = targetPart.CFrame.LookVector
+	look = Vector3.new(look.X, 0, look.Z)
+	if look.Magnitude < 0.1 then
+		look = fromPosition - targetPart.Position
+		look = Vector3.new(look.X, 0, look.Z)
+	end
+	if look.Magnitude < 0.1 then look = Vector3.new(1, 0, 0) end
+	return targetPart.Position + look.Unit * 4
+end
+
+local function ComputeFarmPath(startPosition, endPosition)
+	local presets = {
+		{AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, AgentCanClimb = true, WaypointSpacing = 3},
+		{AgentRadius = 1.5, AgentHeight = 5, AgentCanJump = true, AgentCanClimb = true, WaypointSpacing = 2.5},
+		{AgentRadius = 2.5, AgentHeight = 6, AgentCanJump = true, AgentCanClimb = true, WaypointSpacing = 4}
+	}
+	for _, params in ipairs(presets) do
+		local path = PathfindingService:CreatePath(params)
+		local success = pcall(function()
+			path:ComputeAsync(startPosition, endPosition)
+		end)
+		if success and path.Status == Enum.PathStatus.Success then
+			return path:GetWaypoints()
+		end
+	end
+	return nil
+end
+
+local function RiseFarmCharacter()
+	local _, humanoid, hrp = GetFarmCharacter()
+	if not humanoid or humanoid.Health <= 0 or not hrp or hrp.Position.Y >= 4.7 then return end
+	local start = hrp.Position
+	local target = Vector3.new(start.X, 4.8, start.Z)
+	local duration = math.clamp((target - start).Magnitude / 10, 0.15, 0.8)
+	local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = CFrame.new(target) * (hrp.CFrame - hrp.CFrame.Position)})
+	tween:Play()
+	tween.Completed:Wait()
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function MoveToFarmTarget(targetPart)
+	local character, humanoid, hrp = GetFarmCharacter()
+	if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then return false end
+	RiseFarmCharacter()
+	local destination = GetFarmPositionInFront(targetPart, hrp.Position)
+	if not destination then return false end
+	local waypoints = ComputeFarmPath(hrp.Position, destination)
+	if not waypoints then return false end
+	FarmStatus = "Moving"
+	for _, waypoint in ipairs(waypoints) do
+		if not Settings.FarmEnabled or humanoid.Health <= 0 or not hrp.Parent then return false end
+		local targetPosition = waypoint.Position + Vector3.new(0, 2.5, 0)
+		local distance = (targetPosition - hrp.Position).Magnitude
+		if distance > 0.2 then
+			local currentRotation = hrp.CFrame - hrp.CFrame.Position
+			local tween = TweenService:Create(hrp, TweenInfo.new(distance / FarmMoveSpeed, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPosition) * currentRotation})
+			tween:Play()
+			tween.Completed:Wait()
+		end
+		if waypoint.Action == Enum.PathWaypointAction.Jump then
+			humanoid.Jump = true
+			task.wait(0.05)
+		end
+	end
+	local finalPosition = destination + Vector3.new(0, 2.5, 0)
+	hrp.CFrame = CFrame.new(finalPosition) * (hrp.CFrame - hrp.CFrame.Position)
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	FarmStatus = "Idle"
+	return true
+end
+
+local function FindCrowbarDealer()
+	local map = workspace:FindFirstChild("Map")
+	local shops = map and map:FindFirstChild("Shopz")
+	local _, _, hrp = GetFarmCharacter()
+	if not shops or not hrp then return nil end
+	local closestDealer = nil
+	local closestDistance = math.huge
+	for _, shop in ipairs(shops:GetChildren()) do
+		local stocks = shop:FindFirstChild("CurrentStocks")
+		local stock = stocks and stocks:FindFirstChild("Crowbar")
+		local mainPart = shop:FindFirstChild("MainPart")
+		if stock and stock.Value > 0 and mainPart then
+			local distance = (hrp.Position - mainPart.Position).Magnitude
+			if distance < closestDistance then
+				closestDistance = distance
+				closestDealer = shop
+			end
+		end
+	end
+	return closestDealer
+end
+
+local function BuyFarmCrowbar()
+	local dealer = FindCrowbarDealer()
+	local mainPart = dealer and dealer:FindFirstChild("MainPart")
+	if not mainPart then return false end
+	FarmStatus = "Buying Crowbar"
+	if not MoveToFarmTarget(mainPart) then return false end
+	local events = ReplicatedStorage:FindFirstChild("Events")
+	if not events then return false end
+	local openRemote = events:FindFirstChild("BYZERSPROTEC")
+	local buyRemote = events:FindFirstChild("SSHPRMTE1")
+	if not openRemote or not buyRemote then return false end
+	pcall(function()
+		openRemote:FireServer(true, "shop", mainPart, "IllegalStore")
+	end)
+	task.wait(0.8)
+	pcall(function()
+		buyRemote:InvokeServer("IllegalStore", "Melees", "Crowbar", mainPart, nil, true)
+	end)
+	task.wait(2)
+	pcall(function()
+		openRemote:FireServer(false)
+	end)
+	task.wait(0.5)
+	FarmStatus = "Idle"
+	return HasFarmTool("Crowbar") ~= nil
+end
+
+local function HackFarmTarget(targetObject)
+	if not HasFarmTool("Crowbar") and not BuyFarmCrowbar() then return false end
+	if LocalPlayer.Character and not LocalPlayer.Character:FindFirstChild("Crowbar") then EquipFarmTool("Crowbar") end
+	local events = ReplicatedStorage:FindFirstChild("Events")
+	local remote1 = events and events:FindFirstChild("XMHH.2")
+	local remote2 = events and events:FindFirstChild("XMHH2.2")
+	local mainPart = targetObject and (targetObject:FindFirstChild("MainPart") or targetObject.PrimaryPart)
+	if not remote1 or not remote2 or not mainPart then return false end
+	FarmStatus = "Opening Target"
+	local startTime = tick()
+	local hits = 0
+	while Settings.FarmEnabled and targetObject.Parent and tick() - startTime < 25 do
+		local values = targetObject:FindFirstChild("Values")
+		local broken = values and values:FindFirstChild("Broken")
+		if broken and broken.Value then break end
+		local character = LocalPlayer.Character
+		local crowbar = character and character:FindFirstChild("Crowbar")
+		if not crowbar then
+			EquipFarmTool("Crowbar")
+			character = LocalPlayer.Character
+			crowbar = character and character:FindFirstChild("Crowbar")
+		end
+		local arm = character and (character:FindFirstChild("Right Arm") or character:FindFirstChild("RightHand"))
+		if not crowbar or not arm then return false end
+		local success, result = pcall(function()
+			return remote1:InvokeServer("🍞", tick(), crowbar, "DZDRRRKI", targetObject, "Register")
+		end)
+		if success and result then
+			pcall(function()
+				remote2:FireServer("🍞", tick(), crowbar, "2389ZFX34", result, false, arm, mainPart, targetObject, mainPart.Position, mainPart.Position)
+			end)
+			hits += 1
+		end
+		task.wait(hits % 4 == 0 and 0.7 or 0.4)
+	end
+	FarmStatus = "Idle"
+	local values = targetObject:FindFirstChild("Values")
+	local broken = values and values:FindFirstChild("Broken")
+	return broken and broken.Value or hits > 0
+end
+
+local function GetMoneyNearFarmTarget(targetObject)
+	local mainPart = targetObject and (targetObject:FindFirstChild("MainPart") or targetObject.PrimaryPart)
+	local filter = workspace:FindFirstChild("Filter")
+	local spawned = filter and filter:FindFirstChild("SpawnedBread")
+	if not mainPart or not spawned then return {} end
+	local result = {}
+	for _, money in ipairs(spawned:GetChildren()) do
+		if money:IsA("BasePart") and money.Transparency < 1 and (money.Position - mainPart.Position).Magnitude <= 25 then
+			table.insert(result, money)
+		end
+	end
+	return result
+end
+
+local function CollectFarmMoney(targetObject)
+	local events = ReplicatedStorage:FindFirstChild("Events")
+	local pickupRemote = events and events:FindFirstChild("CZDPZUS")
+	if not pickupRemote then return end
+	FarmStatus = "Collecting Money"
+	for _, money in ipairs(GetMoneyNearFarmTarget(targetObject)) do
+		if not Settings.FarmEnabled then break end
+		if money.Parent and MoveToFarmTarget(money) then
+			pcall(function()
+				pickupRemote:FireServer(money)
+			end)
+			task.wait(0.2)
+		end
+	end
+	FarmStatus = "Idle"
+end
+
+local function StartFarm()
+	if FarmLoopRunning then return end
+	FarmProcessed = {}
+	FarmTempIgnored = {}
+	FarmLoopRunning = true
+	FarmLog("Auto farm enabled")
+	task.spawn(function()
+		while FarmLoopRunning and Settings.FarmEnabled do
+			local character, humanoid = GetFarmCharacter()
+			if not character or not humanoid or humanoid.Health <= 0 then
+				FarmStatus = "Waiting for respawn"
+				task.wait(2)
+				continue
+			end
+			if not HasFarmTool("Crowbar") then
+				if not BuyFarmCrowbar() then
+					FarmStatus = "Crowbar unavailable"
+					task.wait(4)
+					continue
+				end
+			end
+			local targetObject, targetPart = GetNearestFarmTarget()
+			if not targetObject or not targetPart then
+				FarmStatus = "No targets"
+				task.wait(3)
+				continue
+			end
+			if MoveToFarmTarget(targetPart) then
+				if HackFarmTarget(targetObject) then
+					CollectFarmMoney(targetObject)
+					FarmProcessed[targetObject] = true
+				else
+					FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+				end
+			else
+				FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+			end
+			task.wait(0.5)
+		end
+		FarmLoopRunning = false
+		FarmStatus = "Idle"
+	end)
+end
+
+local function StopFarm()
+	Settings.FarmEnabled = false
+	FarmLoopRunning = false
+	FarmStatus = "Idle"
+	FarmLog("Auto farm disabled")
+end
+
+local function StartFarmAutoMoney()
+	if FarmAutoMoneyRunning then return end
+	FarmAutoMoneyRunning = true
+	FarmLog("Auto money enabled")
+	task.spawn(function()
+		while FarmAutoMoneyRunning and Settings.FarmAutoMoney do
+			local filter = workspace:FindFirstChild("Filter")
+			local spawned = filter and filter:FindFirstChild("SpawnedBread")
+			local events = ReplicatedStorage:FindFirstChild("Events")
+			local pickupRemote = events and events:FindFirstChild("CZDPZUS")
+			local _, humanoid, hrp = GetFarmCharacter()
+			if spawned and pickupRemote and humanoid and humanoid.Health > 0 and hrp then
+				local nearest = nil
+				local nearestDistance = FarmPickupDistance
+				for _, money in ipairs(spawned:GetChildren()) do
+					if money:IsA("BasePart") then
+						local distance = (money.Position - hrp.Position).Magnitude
+						if distance <= nearestDistance then
+							nearest = money
+							nearestDistance = distance
+						end
+					end
+				end
+				if nearest then
+					pcall(function()
+						pickupRemote:FireServer(nearest)
+					end)
+					task.wait(0.35)
+				else
+					task.wait(0.15)
+				end
+			else
+				task.wait(0.4)
+			end
+		end
+		FarmAutoMoneyRunning = false
+	end)
+end
+
+local function StopFarmAutoMoney()
+	Settings.FarmAutoMoney = false
+	FarmAutoMoneyRunning = false
+	FarmLog("Auto money disabled")
+end
+
+local function EnableFarmAntiAFK()
+	if FarmAntiAFKConnection then return end
+	FarmAntiAFKConnection = LocalPlayer.Idled:Connect(function()
+		if not Settings.FarmAntiAFK then return end
+		pcall(function()
+			VirtualUser:CaptureController()
+			VirtualUser:ClickButton2(Vector2.new())
+		end)
+	end)
+	FarmLog("Anti-AFK enabled")
+end
+
+local function DisableFarmAntiAFK()
+	Settings.FarmAntiAFK = false
+	if FarmAntiAFKConnection then
+		FarmAntiAFKConnection:Disconnect()
+		FarmAntiAFKConnection = nil
+	end
+	FarmLog("Anti-AFK disabled")
+end
+
+local function CacheFarmInvisParts(character)
+	FarmInvisParts = {}
+	FarmInvisOriginalTransparency = {}
+	if not character then return end
+	for _, object in ipairs(character:GetDescendants()) do
+		if object:IsA("BasePart") then
+			table.insert(FarmInvisParts, object)
+			FarmInvisOriginalTransparency[object] = object.Transparency
+		end
+	end
+end
+
+local function LoadFarmInvisAnimation(humanoid)
+	if FarmInvisAnimTrack then
+		pcall(function() FarmInvisAnimTrack:Stop() end)
+		FarmInvisAnimTrack = nil
+	end
+	if not humanoid then return end
+	local animation = Instance.new("Animation")
+	animation.AnimationId = "rbxassetid://215384594"
+	local success, track = pcall(function()
+		return humanoid:LoadAnimation(animation)
+	end)
+	if success then
+		FarmInvisAnimTrack = track
+		FarmInvisAnimTrack.Priority = Enum.AnimationPriority.Action4
+	end
+end
+
+local function DisableFarmInvisibility()
+	Settings.FarmInvisibility = false
+	if FarmInvisConnection then
+		FarmInvisConnection:Disconnect()
+		FarmInvisConnection = nil
+	end
+	if FarmInvisAnimTrack then
+		pcall(function() FarmInvisAnimTrack:Stop() end)
+		FarmInvisAnimTrack = nil
+	end
+	for part, transparency in pairs(FarmInvisOriginalTransparency) do
+		if part and part.Parent then part.Transparency = transparency end
+	end
+	FarmInvisParts = {}
+	FarmInvisOriginalTransparency = {}
+	local _, humanoid = GetFarmCharacter()
+	if humanoid then Camera.CameraSubject = humanoid end
+	FarmLog("Invisibility disabled")
+end
+
+local function EnableFarmInvisibility()
+	if FarmInvisConnection then return end
+	local character, humanoid, hrp = GetFarmCharacter()
+	if not character or not humanoid or not hrp then return end
+	if humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+		Settings.FarmInvisibility = false
+		FarmLog("Invisibility requires R6")
+		return
+	end
+	CacheFarmInvisParts(character)
+	LoadFarmInvisAnimation(humanoid)
+	Camera.CameraSubject = hrp
+	FarmInvisConnection = RunService.Heartbeat:Connect(function()
+		if not Settings.FarmInvisibility then return end
+		local currentCharacter, currentHumanoid, currentHrp = GetFarmCharacter()
+		if currentCharacter ~= character then
+			character = currentCharacter
+			humanoid = currentHumanoid
+			hrp = currentHrp
+			if not character or not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R6 or not hrp then return end
+			CacheFarmInvisParts(character)
+			LoadFarmInvisAnimation(humanoid)
+			Camera.CameraSubject = hrp
+		end
+		if not humanoid or humanoid.Health <= 0 or not hrp then return end
+		if FarmInvisAnimTrack then
+			pcall(function()
+				if not FarmInvisAnimTrack.IsPlaying then FarmInvisAnimTrack:Play() end
+				FarmInvisAnimTrack:AdjustSpeed(0)
+				FarmInvisAnimTrack.TimePosition = 0.3
+			end)
+		end
+		for _, part in ipairs(FarmInvisParts) do
+			if part and part.Parent and part.Transparency < 1 then part.Transparency = 0.5 end
+		end
+	end)
+	FarmLog("Invisibility enabled")
+end
+
+local function ClearFarmSafeESP()
+	for object, data in pairs(FarmSafeESPElements) do
+		pcall(function()
+			if data.billboard then data.billboard:Destroy() end
+			if data.highlight then data.highlight:Destroy() end
+		end)
+		FarmSafeESPElements[object] = nil
+	end
+end
+
+local function UpdateFarmSafeESP()
+	local folder = FindFarmFolder()
+	if not folder then return end
+	for _, object in ipairs(folder:GetChildren()) do
+		local name = object.Name:lower()
+		if name:find("safe") or name:find("register") then
+			local mainPart = object:FindFirstChild("MainPart") or object.PrimaryPart or object:FindFirstChildOfClass("BasePart")
+			if mainPart and mainPart.Position.Y >= 4.8 then
+				local values = object:FindFirstChild("Values")
+				local broken = values and values:FindFirstChild("Broken")
+				local isBroken = broken and broken.Value or false
+				local color = isBroken and Color3.new(1, 0, 0) or Color3.new(0, 1, 0)
+				local data = FarmSafeESPElements[object]
+				if not data then
+					local billboard = Instance.new("BillboardGui")
+					billboard.Name = "AehmreFarmESP_Billboard"
+					billboard.Adornee = mainPart
+					billboard.Size = UDim2.new(0, 200, 0, 50)
+					billboard.StudsOffset = Vector3.new(0, 4, 0)
+					billboard.AlwaysOnTop = true
+					billboard.MaxDistance = 1000
+					billboard.Parent = object
+					local label = Instance.new("TextLabel", billboard)
+					label.Size = UDim2.new(1, 0, 1, 0)
+					label.BackgroundTransparency = 1
+					label.Font = Enum.Font.SourceSansBold
+					label.Text = object.Name
+					label.TextStrokeTransparency = 0
+					label.TextStrokeColor3 = Color3.new(0, 0, 0)
+					local highlight = Instance.new("Highlight")
+					highlight.Name = "AehmreFarmESP_Highlight"
+					highlight.Adornee = object
+					highlight.FillTransparency = 0.5
+					highlight.OutlineColor = Color3.new(1, 1, 1)
+					highlight.OutlineTransparency = 0
+					highlight.Parent = object
+					data = {billboard = billboard, label = label, highlight = highlight}
+					FarmSafeESPElements[object] = data
+				end
+				data.label.TextSize = Settings.FarmESPTextSize
+				data.label.TextColor3 = color
+				data.highlight.FillColor = color
+			end
+		end
+	end
+	for object, data in pairs(FarmSafeESPElements) do
+		if not object or not object.Parent then
+			pcall(function()
+				if data.billboard then data.billboard:Destroy() end
+				if data.highlight then data.highlight:Destroy() end
+			end)
+			FarmSafeESPElements[object] = nil
+		end
+	end
+end
+
+local function EnableFarmSafeESP()
+	if FarmSafeESPRunning then return end
+	FarmSafeESPRunning = true
+	FarmLog("Safe/Register ESP enabled")
+	task.spawn(function()
+		while FarmSafeESPRunning and Settings.FarmSafeESP do
+			UpdateFarmSafeESP()
+			task.wait(0.4)
+		end
+		FarmSafeESPRunning = false
+	end)
+end
+
+local function DisableFarmSafeESP()
+	Settings.FarmSafeESP = false
+	FarmSafeESPRunning = false
+	ClearFarmSafeESP()
+	FarmLog("Safe/Register ESP disabled")
+end
+
+local function FarmCleanup()
+	FarmLoopRunning = false
+	FarmAutoMoneyRunning = false
+	FarmSafeESPRunning = false
+	Settings.FarmEnabled = false
+	Settings.FarmAutoMoney = false
+	Settings.FarmSafeESP = false
+	DisableFarmAntiAFK()
+	DisableFarmInvisibility()
+	ClearFarmSafeESP()
 end
 
 --// Drawing Vector FOV Crosshair & Target Indicator Framework
@@ -430,6 +1048,7 @@ local function UniversalDestruct()
 	pcall(function() WallDebugLine:Remove() end)
 	pcall(function() TargetInfoText:Remove() end)
 	UpdateFullbright(false)
+	FarmCleanup()
 	WispAllESPRemnants()
 end
 env[CurrentScriptID] = UniversalDestruct 
@@ -1379,6 +1998,7 @@ local LogPage = RegisterTabContainerPage("System Logs")
 local CustPage = RegisterTabContainerPage("Customization")
 local KeybindPage = RegisterTabContainerPage("Keybinds")
 local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
+local FarmPage = RegisterTabContainerPage("Farm")
 local SettPage = RegisterTabContainerPage("Settings")
 
 local SystemLogEntries = {}
@@ -1420,6 +2040,7 @@ SystemLogEvent = function(msg)
 	end
 end
 SystemLogEvent("Engine Core Initialized Successfully.")
+FarmLogHook = SystemLogEvent
 
 Tabs["Aim Lock"].Page.Visible = true
 Tabs["Aim Lock"].Btn.TextColor3 = Styles.TextMain
@@ -1965,6 +2586,31 @@ AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line 
 
 AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
 
+
+AddDashboardButton(FarmPage, "FarmEnabled", "Start Farm", "Automatically finds and processes nearby safes/registers.", "Game-specific farm logic using the existing target/remotes.", function(enabled)
+	if enabled then StartFarm() else StopFarm() end
+end)
+
+AddDashboardButton(FarmPage, "FarmAutoMoney", "Auto Money", "Automatically picks up nearby money drops.", "Optimized interval scan instead of RenderStepped.", function(enabled)
+	if enabled then StartFarmAutoMoney() else StopFarmAutoMoney() end
+end)
+
+AddDashboardButton(FarmPage, "FarmInvisibility", "Invisibility (R6)", "Enables the R6 invisibility mode from the farm hub.", "Only runs while enabled and caches character parts.", function(enabled)
+	if enabled then EnableFarmInvisibility() else DisableFarmInvisibility() end
+end)
+
+AddDashboardButton(FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle kick while enabled.", "Uses one Idled connection instead of a frame loop.", function(enabled)
+	if enabled then EnableFarmAntiAFK() else DisableFarmAntiAFK() end
+end)
+
+AddDashboardButton(VisPage, "FarmSafeESP", "Safe / Register ESP", "Highlights farm safes and registers.", "Green = available, red = broken.", function(enabled)
+	if enabled then EnableFarmSafeESP() else DisableFarmSafeESP() end
+end)
+
+AddDashboardSlider(VisPage, "FarmESPTextSize", "Farm ESP Text Size", 10, 40, "Controls the Safe/Register ESP label size.", "No movement-speed control is included.", function(value)
+	Settings.FarmESPTextSize = math.floor(value + 0.5)
+end, 0)
+
 local CycleColorBtn = Instance.new("TextButton", CustPage)
 CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
 CycleColorBtn.BackgroundColor3 = Styles.CardBg
@@ -2066,6 +2712,7 @@ local function FactoryResetSettings()
 	ControlClick(false)
 
 	UpdateFullbright(false)
+	FarmCleanup()
 	RefreshAllESP()
 
 	FOVCircle.Visible = false
