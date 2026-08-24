@@ -89,6 +89,8 @@ local Settings = {
 	ShowFPS = false,
 	WallCheckDebug = false,
 	TargetInfo = false,
+	DetectPlayers = true,
+	DetectNPCs = false,
 	TargetPart = "Head", 
 	ShootMode = "Normal", 
 	Smoothness = 15,      
@@ -232,14 +234,60 @@ local AimFOVColor = Color3.fromRGB(0, 160, 255)
 local FOVPulseSpeed = 6
 local FOVSizePulseAmount = 8
 
+local TrackedNPCs = {}
+
+local function IsNPCModel(model)
+	if not model or not model:IsA("Model") then return false end
+	if model == LocalPlayer.Character then return false end
+	if Players:GetPlayerFromCharacter(model) then return false end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+
+	return true
+end
+
+local function GetCharacterRoot(character)
+	if not character then return nil end
+	return character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+end
+
 local function WispAllESPRemnants()
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character then
-			local folder = p.Character:FindFirstChild("Ligia_Premium_ESP")
-			if folder then pcall(function() folder:Destroy() end) end
-			local oldEsp = p.Character:FindFirstChild("TestESP_Highlight")
-			if oldEsp then pcall(function() oldEsp:Destroy() end) end
+	for _, object in ipairs(workspace:GetDescendants()) do
+		if object:IsA("Highlight") and (object.Name == "TestESP_Highlight" or object.Name == "Ligia_Premium_ESP") then
+			pcall(function() object:Destroy() end)
 		end
+	end
+end
+
+local function UpdateCharacterESP(character, color, allowed)
+	if not character then return end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local highlight = character:FindFirstChild("TestESP_Highlight")
+	local shouldShow = AccessNoticeDismissed and Settings.Enabled and Settings.ESPEnabled and allowed and humanoid and humanoid.Health > 0
+
+	if shouldShow then
+		if not highlight then
+			highlight = Instance.new("Highlight")
+			highlight.Name = "TestESP_Highlight"
+			highlight.OutlineTransparency = 0.2
+			highlight.Parent = character
+		end
+
+		if highlight.FillTransparency ~= Settings.ESPTransparency then
+			highlight.FillTransparency = Settings.ESPTransparency
+		end
+
+		if highlight.FillColor ~= color then
+			highlight.FillColor = color
+		end
+
+		if highlight.OutlineColor ~= color then
+			highlight.OutlineColor = color
+		end
+	elseif highlight then
+		highlight:Destroy()
 	end
 end
 
@@ -249,35 +297,20 @@ local function UpdatePlayerESP(player)
 	local character = player.Character
 	if not character then return end
 
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local highlight = character:FindFirstChild("TestESP_Highlight")
+	local color = player.TeamColor and player.TeamColor.Color or Styles.Accent
+	UpdateCharacterESP(character, color, Settings.DetectPlayers)
+end
 
-	if AccessNoticeDismissed and Settings.Enabled and Settings.ESPEnabled and humanoid and humanoid.Health > 0 then
-		if not highlight then
-			highlight = Instance.new("Highlight")
-			highlight.Name = "TestESP_Highlight"
-			highlight.OutlineTransparency = 0.2
-			highlight.Parent = character
-		end
+local function UpdateNPCESP(model)
+	if not model then return end
 
-		local col = player.TeamColor and player.TeamColor.Color or Styles.Accent
-
-		if highlight.FillTransparency ~= Settings.ESPTransparency then
-			highlight.FillTransparency = Settings.ESPTransparency
-		end
-
-		if highlight.FillColor ~= col then
-			highlight.FillColor = col
-		end
-
-		if highlight.OutlineColor ~= col then
-			highlight.OutlineColor = col
-		end
-	else
-		if highlight then
-			highlight:Destroy()
-		end
+	if not IsNPCModel(model) then
+		local highlight = model:FindFirstChild("TestESP_Highlight")
+		if highlight then highlight:Destroy() end
+		return
 	end
+
+	UpdateCharacterESP(model, Styles.Accent, Settings.DetectNPCs)
 end
 
 local function SetupESPPlayer(player)
@@ -305,9 +338,52 @@ local function SetupESPPlayer(player)
 	end)
 end
 
+local function RegisterNPC(model)
+	if not IsNPCModel(model) or TrackedNPCs[model] then return end
+
+	TrackedNPCs[model] = true
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		SafeConnect(humanoid.HealthChanged, function()
+			UpdateNPCESP(model)
+		end)
+	end
+
+	SafeConnect(model.AncestryChanged, function(_, parent)
+		if not parent then
+			TrackedNPCs[model] = nil
+		end
+	end)
+
+	UpdateNPCESP(model)
+end
+
+local function TryRegisterNPCFromInstance(instance)
+	local model = nil
+
+	if instance:IsA("Model") then
+		model = instance
+	else
+		model = instance:FindFirstAncestorOfClass("Model")
+	end
+
+	if model then
+		RegisterNPC(model)
+	end
+end
+
 local function RefreshAllESP()
 	for _, player in ipairs(Players:GetPlayers()) do
 		UpdatePlayerESP(player)
+	end
+
+	for model in pairs(TrackedNPCs) do
+		if model.Parent then
+			UpdateNPCESP(model)
+		else
+			TrackedNPCs[model] = nil
+		end
 	end
 end
 
@@ -315,7 +391,19 @@ for _, player in ipairs(Players:GetPlayers()) do
 	SetupESPPlayer(player)
 end
 
+for _, descendant in ipairs(workspace:GetDescendants()) do
+	if descendant:IsA("Humanoid") then
+		TryRegisterNPCFromInstance(descendant)
+	end
+end
+
 SafeConnect(Players.PlayerAdded, SetupESPPlayer)
+
+SafeConnect(workspace.DescendantAdded, function(descendant)
+	if descendant:IsA("Humanoid") or descendant.Name == "HumanoidRootPart" or descendant.Name == "UpperTorso" or descendant.Name == "Torso" then
+		task.defer(TryRegisterNPCFromInstance, descendant)
+	end
+end)
 
 local function ControlClick(press)
 	if press then
@@ -370,6 +458,46 @@ local function IsEnemy(player)
 	return true
 end
 
+local function GetTargetCharacter(target)
+	if not target or typeof(target) ~= "Instance" then return nil end
+
+	if target:IsA("Player") then
+		return target.Character
+	end
+
+	if target:IsA("Model") then
+		return target
+	end
+
+	return nil
+end
+
+local function GetTargetDisplayName(target)
+	if not target or typeof(target) ~= "Instance" then
+		return "Unknown"
+	end
+
+	if target:IsA("Player") then
+		return target.DisplayName
+	end
+
+	return target.Name
+end
+
+local function IsTargetTypeEnabled(target)
+	if not target or typeof(target) ~= "Instance" then return false end
+
+	if target:IsA("Player") then
+		return Settings.DetectPlayers and IsEnemy(target)
+	end
+
+	if target:IsA("Model") then
+		return Settings.DetectNPCs and IsNPCModel(target)
+	end
+
+	return false
+end
+
 local function HasLineOfSight(character, targetPart)
 	local localCharacter = LocalPlayer.Character
 	if not localCharacter then return false end
@@ -399,43 +527,40 @@ local function GetAimScreenPosition()
 	return UserInputService:GetMouseLocation()
 end
 
-local function GetClosestPlayer()
+local function GetClosestTarget()
 	local localCharacter = LocalPlayer.Character
 	if not localCharacter then return nil end
 
-	local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
+	local localRoot = GetCharacterRoot(localCharacter)
 	if not localRoot then return nil end
 
-	local mousePosition = GetAimScreenPosition()
-	local closestPlayer = nil
+	local aimPosition = GetAimScreenPosition()
+	local closestTarget = nil
 	local closestScreenDistance = Settings.FOVRadius
 	local closestDebugDistance = Settings.FOVRadius
 
 	DebugTargetPart = nil
 	DebugTargetBlocked = false
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if not IsEnemy(player) then continue end
-
-		local character = player.Character
-		if not character then continue end
+	local function EvaluateTarget(target, character)
+		if not target or not character or not IsTargetTypeEnabled(target) then return end
 
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local root = character:FindFirstChild("HumanoidRootPart")
+		local root = GetCharacterRoot(character)
 		local targetPart = GetTargetPart(character)
 
-		if not humanoid or humanoid.Health <= 0 or not root or not targetPart then continue end
+		if not humanoid or humanoid.Health <= 0 or not root or not targetPart then return end
 
 		local worldDistance = (root.Position - localRoot.Position).Magnitude
-		if worldDistance > Settings.MaxDistance then continue end
+		if worldDistance > Settings.MaxDistance then return end
 
 		local screenPosition, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
-		if not onScreen or screenPosition.Z <= 0 then continue end
+		if not onScreen or screenPosition.Z <= 0 then return end
 
 		local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
-		local screenDistance = (targetScreenPosition - mousePosition).Magnitude
+		local screenDistance = (targetScreenPosition - aimPosition).Magnitude
 
-		if screenDistance > Settings.FOVRadius then continue end
+		if screenDistance > Settings.FOVRadius then return end
 
 		local hasLineOfSight = HasLineOfSight(character, targetPart)
 		local visible = not Settings.WallCheck or hasLineOfSight
@@ -446,26 +571,43 @@ local function GetClosestPlayer()
 			DebugTargetBlocked = not hasLineOfSight
 		end
 
-		if not visible then continue end
-		if screenDistance >= closestScreenDistance then continue end
+		if not visible or screenDistance >= closestScreenDistance then return end
 
 		closestScreenDistance = screenDistance
-		closestPlayer = player
+		closestTarget = target
 	end
 
-	return closestPlayer
+	if Settings.DetectPlayers then
+		for _, player in ipairs(Players:GetPlayers()) do
+			if IsEnemy(player) then
+				EvaluateTarget(player, player.Character)
+			end
+		end
+	end
+
+	if Settings.DetectNPCs then
+		for model in pairs(TrackedNPCs) do
+			if model.Parent then
+				EvaluateTarget(model, model)
+			else
+				TrackedNPCs[model] = nil
+			end
+		end
+	end
+
+	return closestTarget
 end
 
-local function IsTargetValid(player)
-	if not player or not IsEnemy(player) then return false end
+local function IsTargetValid(target)
+	if not target or not IsTargetTypeEnabled(target) then return false end
 
 	local localCharacter = LocalPlayer.Character
-	local character = player.Character
+	local character = GetTargetCharacter(target)
 
 	if not localCharacter or not character then return false end
 
-	local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
-	local root = character:FindFirstChild("HumanoidRootPart")
+	local localRoot = GetCharacterRoot(localCharacter)
+	local root = GetCharacterRoot(character)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local targetPart = GetTargetPart(character)
 
@@ -479,9 +621,9 @@ local function IsTargetValid(player)
 	local screenPosition, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
 	if not onScreen or screenPosition.Z <= 0 then return false end
 
-	local mousePosition = GetAimScreenPosition()
+	local aimPosition = GetAimScreenPosition()
 	local targetScreenPosition = Vector2.new(screenPosition.X, screenPosition.Y)
-	local screenDistance = (targetScreenPosition - mousePosition).Magnitude
+	local screenDistance = (targetScreenPosition - aimPosition).Magnitude
 
 	if screenDistance > Settings.FOVRadius then return false end
 	if not IsTargetVisible(character, targetPart) then return false end
@@ -502,7 +644,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		DebugTargetRefreshTimer += deltaTime
 
 		if Settings.WallCheckDebug and DebugTargetRefreshTimer >= 0.1 then
-			GetClosestPlayer()
+			GetClosestTarget()
 			DebugTargetRefreshTimer = 0
 		end
 
@@ -543,7 +685,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			TargetBlocked = false
 
 			if not IsTargetValid(Target) then
-				Target = GetClosestPlayer()
+				Target = GetClosestTarget()
 			end
 
 			if Settings.WallCheckDebug and DebugTargetPart then
@@ -563,8 +705,10 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				WallDebugLine.Visible = false
 			end
 
-			if Target and Target.Character then
-				local HitPart = GetTargetPart(Target.Character)
+			local TargetCharacter = GetTargetCharacter(Target)
+
+			if Target and TargetCharacter then
+				local HitPart = GetTargetPart(TargetCharacter)
 				if HitPart then
 					-- NEW: Draw Target Indicator Module
 					local pos, onScreen = Camera:WorldToScreenPoint(HitPart.Position)
@@ -574,8 +718,8 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 						TargetInfoText.Visible = true
 
 						if DebugInfoTimer >= 0.1 then
-							local humanoid = Target.Character:FindFirstChildOfClass("Humanoid")
-							local root = Target.Character:FindFirstChild("HumanoidRootPart")
+							local humanoid = TargetCharacter:FindFirstChildOfClass("Humanoid")
+							local root = GetCharacterRoot(TargetCharacter)
 							local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
 							local health = humanoid and math.floor(humanoid.Health) or 0
@@ -583,7 +727,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 
 							TargetInfoText.Text = string.format(
 								"%s\nHP: %d\nDistance: %d studs\nPart: %s",
-								Target.DisplayName,
+								GetTargetDisplayName(Target),
 								health,
 								distance,
 								Settings.TargetPart
@@ -610,13 +754,13 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 
 					-- NEW: Kill Feed Logger Hooks
 					if Target ~= LastLoggedTarget then
-						SystemLogEvent("Acquired Target Lock: " .. Target.DisplayName)
+						SystemLogEvent("Acquired Target Lock: " .. GetTargetDisplayName(Target))
 						LastLoggedTarget = Target
 					end
 
-					local currentHp = Target.Character:FindFirstChildOfClass("Humanoid") and Target.Character:FindFirstChildOfClass("Humanoid").Health or 0
+					local currentHp = TargetCharacter:FindFirstChildOfClass("Humanoid") and TargetCharacter:FindFirstChildOfClass("Humanoid").Health or 0
 					if currentHp <= 0 and LastTargetHealth > 0 then
-						SystemLogEvent("Target Eliminated: " .. Target.DisplayName)
+						SystemLogEvent("Target Eliminated: " .. GetTargetDisplayName(Target))
 						LastLoggedTarget = nil 
 					end
 					LastTargetHealth = currentHp
@@ -1400,7 +1544,7 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 			customCallback(current)
 		end
 
-		if configKey == "ESPEnabled" or configKey == "Enabled" then
+		if configKey == "ESPEnabled" or configKey == "Enabled" or configKey == "DetectPlayers" or configKey == "DetectNPCs" then
 			RefreshAllESP()
 		end
 	end)
@@ -1786,6 +1930,14 @@ end
 
 --// Map Interface Elements Across Target Tab Frames
 AddDashboardButton(AimPage, "Enabled", "System Master Processing", "★ Optimal Placement: Core Hub Active On Screen", "Enables global calculation thread loops across physics steps.")
+AddDashboardButton(AimPage, "DetectPlayers", "Detect Players", "Target Detection: Roblox Players", "Allows Aim Lock and ESP to detect player characters.", function()
+	Target = nil
+	RefreshAllESP()
+end)
+AddDashboardButton(AimPage, "DetectNPCs", "Detect NPCs", "Target Detection: NPC Humanoids", "Allows Aim Lock and ESP to detect NPC models with a Humanoid.", function()
+	Target = nil
+	RefreshAllESP()
+end)
 AddDashboardButton(AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
 AddDashboardButton(AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
 AddDashboardDropdown(AimPage, "TargetPart", "Target Part", {"Head", "HumanoidRootPart", "Torso"}, "Select the body part used for target locking.")
