@@ -352,32 +352,25 @@ local Farm = (function()
 	local function MoveToFarmTarget(targetPart)
 		local character, humanoid, hrp = GetFarmCharacter()
 		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then return false end
-		RiseFarmCharacter()
+
 		local destination = GetFarmPositionInFront(targetPart, hrp.Position)
 		if not destination then return false end
-		local waypoints = ComputeFarmPath(hrp.Position, destination)
-		if not waypoints then return false end
-		FarmStatus = "Moving"
-		for _, waypoint in ipairs(waypoints) do
-			if not Settings.FarmEnabled or humanoid.Health <= 0 or not hrp.Parent then return false end
-			local targetPosition = waypoint.Position + Vector3.new(0, 2.5, 0)
-			local distance = (targetPosition - hrp.Position).Magnitude
-			if distance > 0.2 then
-				local currentRotation = hrp.CFrame - hrp.CFrame.Position
-				local tween = TweenService:Create(hrp, TweenInfo.new(distance / FarmMoveSpeed, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPosition) * currentRotation})
-				tween:Play()
-				tween.Completed:Wait()
-			end
-			if waypoint.Action == Enum.PathWaypointAction.Jump then
-				humanoid.Jump = true
-				task.wait(0.05)
-			end
-		end
+
+		FarmStatus = "Teleporting"
+
 		local finalPosition = destination + Vector3.new(0, 2.5, 0)
-		hrp.CFrame = CFrame.new(finalPosition) * (hrp.CFrame - hrp.CFrame.Position)
+		local lookAt = Vector3.new(targetPart.Position.X, finalPosition.Y, targetPart.Position.Z)
+
+		if (lookAt - finalPosition).Magnitude > 0.01 then
+			hrp.CFrame = CFrame.lookAt(finalPosition, lookAt)
+		else
+			hrp.CFrame = CFrame.new(finalPosition)
+		end
+
 		hrp.AssemblyLinearVelocity = Vector3.zero
 		hrp.AssemblyAngularVelocity = Vector3.zero
 		FarmStatus = "Idle"
+
 		return true
 	end
 
