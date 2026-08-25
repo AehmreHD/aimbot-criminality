@@ -793,7 +793,7 @@ local Farm = (function()
 		FarmLog("Safe/Register ESP disabled")
 	end
 
-	local function Farm.Cleanup()
+	local function FarmCleanup()
 		FarmLoopRunning = false
 		FarmAutoMoneyRunning = false
 		FarmSafeESPRunning = false
