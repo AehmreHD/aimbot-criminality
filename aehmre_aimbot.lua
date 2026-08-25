@@ -619,29 +619,74 @@ local Farm = (function()
 		FarmLog("Anti-AFK disabled")
 	end
 
-	local function CacheFarmInvisParts(character)
-		FarmInvisParts = {}
-		FarmInvisOriginalTransparency = {}
-		if not character then return end
-		for _, object in ipairs(character:GetDescendants()) do
-			if object:IsA("BasePart") then
-				table.insert(FarmInvisParts, object)
-				FarmInvisOriginalTransparency[object] = object.Transparency
-			end
+	local FarmInvisWarningGui = nil
+	local FarmInvisWarningLabel = nil
+	local FarmInvisCharacter = nil
+	local FarmInvisHumanoid = nil
+	local FarmInvisHrp = nil
+	local FarmInvisPossible = true
+
+	local function UpdateFarmInvisCharacter()
+		FarmInvisCharacter = LocalPlayer.Character
+
+		if FarmInvisCharacter then
+			FarmInvisHrp = FarmInvisCharacter:FindFirstChild("HumanoidRootPart")
+			FarmInvisHumanoid = FarmInvisCharacter:FindFirstChildOfClass("Humanoid")
+		else
+			FarmInvisHrp = nil
+			FarmInvisHumanoid = nil
 		end
 	end
 
-	local function LoadFarmInvisAnimation(humanoid)
+	local function EnsureFarmInvisWarning()
+		if FarmInvisWarningGui and FarmInvisWarningGui.Parent then return end
+
+		local coreGui = game:GetService("CoreGui")
+
+		FarmInvisWarningGui = Instance.new("ScreenGui")
+		FarmInvisWarningGui.Name = "AehmreInvisWarningGUI"
+		FarmInvisWarningGui.ResetOnSpawn = false
+		FarmInvisWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		FarmInvisWarningGui.Parent = coreGui
+
+		FarmInvisWarningLabel = Instance.new("TextLabel")
+		FarmInvisWarningLabel.Text = "⚠️ YOU ARE VISIBLE ⚠️"
+		FarmInvisWarningLabel.Visible = false
+		FarmInvisWarningLabel.Size = UDim2.new(0, 260, 0, 30)
+		FarmInvisWarningLabel.Position = UDim2.new(0.5, -130, 0.85, 0)
+		FarmInvisWarningLabel.BackgroundTransparency = 1
+		FarmInvisWarningLabel.Font = Enum.Font.GothamSemibold
+		FarmInvisWarningLabel.TextSize = 24
+		FarmInvisWarningLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+		FarmInvisWarningLabel.TextStrokeTransparency = 0.5
+		FarmInvisWarningLabel.ZIndex = 10
+		FarmInvisWarningLabel.Parent = FarmInvisWarningGui
+	end
+
+	local function IsFarmInvisGrounded()
+		return FarmInvisHumanoid
+			and FarmInvisHumanoid:IsDescendantOf(workspace)
+			and FarmInvisHumanoid.FloorMaterial ~= Enum.Material.Air
+	end
+
+	local function LoadFarmInvisAnimation()
 		if FarmInvisAnimTrack then
-			pcall(function() FarmInvisAnimTrack:Stop() end)
+			pcall(function()
+				FarmInvisAnimTrack:Stop()
+			end)
+
 			FarmInvisAnimTrack = nil
 		end
-		if not humanoid then return end
+
+		if not FarmInvisHumanoid then return end
+
 		local animation = Instance.new("Animation")
 		animation.AnimationId = "rbxassetid://215384594"
+
 		local success, track = pcall(function()
-			return humanoid:LoadAnimation(animation)
+			return FarmInvisHumanoid:LoadAnimation(animation)
 		end)
+
 		if success then
 			FarmInvisAnimTrack = track
 			FarmInvisAnimTrack.Priority = Enum.AnimationPriority.Action4
@@ -650,60 +695,199 @@ local Farm = (function()
 
 	local function DisableFarmInvisibility()
 		Settings.FarmInvisibility = false
+
 		if FarmInvisConnection then
 			FarmInvisConnection:Disconnect()
 			FarmInvisConnection = nil
 		end
+
 		if FarmInvisAnimTrack then
-			pcall(function() FarmInvisAnimTrack:Stop() end)
+			pcall(function()
+				FarmInvisAnimTrack:Stop()
+			end)
+
 			FarmInvisAnimTrack = nil
 		end
-		for part, transparency in pairs(FarmInvisOriginalTransparency) do
-			if part and part.Parent then part.Transparency = transparency end
+
+		UpdateFarmInvisCharacter()
+
+		if FarmInvisHumanoid then
+			Camera.CameraSubject = FarmInvisHumanoid
 		end
-		FarmInvisParts = {}
-		FarmInvisOriginalTransparency = {}
-		local _, humanoid = GetFarmCharacter()
-		if humanoid then Camera.CameraSubject = humanoid end
+
+		if FarmInvisCharacter then
+			for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
+				if part:IsA("BasePart") and part.Transparency == 0.5 then
+					part.Transparency = 0
+				end
+			end
+		end
+
+		if FarmInvisWarningLabel then
+			FarmInvisWarningLabel.Visible = false
+		end
+
 		FarmLog("Invisibility disabled")
 	end
 
 	local function EnableFarmInvisibility()
 		if FarmInvisConnection then return end
-		local character, humanoid, hrp = GetFarmCharacter()
-		if not character or not humanoid or not hrp then return end
-		if humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+
+		UpdateFarmInvisCharacter()
+		EnsureFarmInvisWarning()
+
+		if not FarmInvisCharacter or not FarmInvisHumanoid or not FarmInvisHrp then
 			Settings.FarmInvisibility = false
+			return
+		end
+
+		if not FarmInvisCharacter:FindFirstChild("Torso") or FarmInvisHumanoid.RigType ~= Enum.HumanoidRigType.R6 then
+			Settings.FarmInvisibility = false
+			FarmInvisPossible = false
+
+			pcall(function()
+				game:GetService("StarterGui"):SetCore("SendNotification", {
+					Title = "Invisibility unavailable",
+					Text = "R6 avatar required",
+					Duration = 5
+				})
+			end)
+
 			FarmLog("Invisibility requires R6")
 			return
 		end
-		CacheFarmInvisParts(character)
-		LoadFarmInvisAnimation(humanoid)
-		Camera.CameraSubject = hrp
-		FarmInvisConnection = RunService.Heartbeat:Connect(function()
-			if not Settings.FarmInvisibility then return end
-			local currentCharacter, currentHumanoid, currentHrp = GetFarmCharacter()
-			if currentCharacter ~= character then
-				character = currentCharacter
-				humanoid = currentHumanoid
-				hrp = currentHrp
-				if not character or not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R6 or not hrp then return end
-				CacheFarmInvisParts(character)
-				LoadFarmInvisAnimation(humanoid)
-				Camera.CameraSubject = hrp
+
+		FarmInvisPossible = true
+		Camera.CameraSubject = FarmInvisHrp
+		LoadFarmInvisAnimation()
+
+		FarmInvisConnection = RunService.Heartbeat:Connect(function(dt)
+			if not Settings.FarmInvisibility or not FarmInvisPossible then
+				if FarmInvisWarningLabel then
+					FarmInvisWarningLabel.Visible = false
+				end
+
+				return
 			end
-			if not humanoid or humanoid.Health <= 0 or not hrp then return end
+
+			local currentCharacter = LocalPlayer.Character
+
+			if currentCharacter ~= FarmInvisCharacter then
+				if FarmInvisAnimTrack then
+					pcall(function()
+						FarmInvisAnimTrack:Stop()
+					end)
+
+					FarmInvisAnimTrack = nil
+				end
+
+				task.wait()
+				UpdateFarmInvisCharacter()
+
+				if not FarmInvisCharacter or not FarmInvisHumanoid or not FarmInvisHrp then
+					return
+				end
+
+				if FarmInvisHumanoid.RigType ~= Enum.HumanoidRigType.R6 or not FarmInvisCharacter:FindFirstChild("Torso") then
+					FarmInvisPossible = false
+					Settings.FarmInvisibility = false
+
+					if FarmInvisWarningLabel then
+						FarmInvisWarningLabel.Visible = false
+					end
+
+					return
+				end
+
+				FarmInvisPossible = true
+				Camera.CameraSubject = FarmInvisHrp
+				LoadFarmInvisAnimation()
+			end
+
+			if not FarmInvisCharacter
+				or not FarmInvisHumanoid
+				or not FarmInvisHrp
+				or not FarmInvisHumanoid:IsDescendantOf(workspace)
+				or FarmInvisHumanoid.Health <= 0 then
+
+				if FarmInvisWarningLabel then
+					FarmInvisWarningLabel.Visible = false
+				end
+
+				return
+			end
+
+			if FarmInvisWarningLabel then
+				FarmInvisWarningLabel.Visible = not IsFarmInvisGrounded()
+			end
+
+			local speed = 12
+
+			if FarmInvisHumanoid.MoveDirection.Magnitude > 0 then
+				local move = FarmInvisHumanoid.MoveDirection * speed * dt
+				FarmInvisHrp.CFrame = FarmInvisHrp.CFrame + move
+			end
+
+			local originalCF = FarmInvisHrp.CFrame
+			local originalCamOffset = FarmInvisHumanoid.CameraOffset
+			local _, cameraYaw = Camera.CFrame:ToOrientation()
+
+			FarmInvisHrp.CFrame = CFrame.new(FarmInvisHrp.CFrame.Position) * CFrame.fromOrientation(0, cameraYaw, 0)
+			FarmInvisHrp.CFrame = FarmInvisHrp.CFrame * CFrame.Angles(math.rad(90), 0, 0)
+			FarmInvisHumanoid.CameraOffset = Vector3.new(0, 1.44, 0)
+
 			if FarmInvisAnimTrack then
-				pcall(function()
-					if not FarmInvisAnimTrack.IsPlaying then FarmInvisAnimTrack:Play() end
+				local success = pcall(function()
+					if not FarmInvisAnimTrack.IsPlaying then
+						FarmInvisAnimTrack:Play()
+					end
+
 					FarmInvisAnimTrack:AdjustSpeed(0)
 					FarmInvisAnimTrack.TimePosition = 0.3
 				end)
+
+				if not success then
+					LoadFarmInvisAnimation()
+				end
+			elseif FarmInvisHumanoid.Health > 0 then
+				LoadFarmInvisAnimation()
 			end
-			for _, part in ipairs(FarmInvisParts) do
-				if part and part.Parent and part.Transparency < 1 then part.Transparency = 0.5 end
+
+			RunService.RenderStepped:Wait()
+
+			if FarmInvisHumanoid and FarmInvisHumanoid:IsDescendantOf(workspace) then
+				FarmInvisHumanoid.CameraOffset = originalCamOffset
+			end
+
+			if FarmInvisHrp and FarmInvisHrp:IsDescendantOf(workspace) then
+				FarmInvisHrp.CFrame = originalCF
+			end
+
+			if FarmInvisAnimTrack then
+				pcall(function()
+					FarmInvisAnimTrack:Stop()
+				end)
+			end
+
+			if FarmInvisHrp and FarmInvisHrp:IsDescendantOf(workspace) then
+				local lookVec = Camera.CFrame.LookVector
+				local flatLook = Vector3.new(lookVec.X, 0, lookVec.Z)
+
+				if flatLook.Magnitude > 0.1 then
+					flatLook = flatLook.Unit
+					FarmInvisHrp.CFrame = CFrame.new(FarmInvisHrp.Position, FarmInvisHrp.Position + flatLook)
+				end
+			end
+
+			if FarmInvisCharacter then
+				for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
+					if part:IsA("BasePart") and part.Transparency ~= 1 then
+						part.Transparency = 0.5
+					end
+				end
 			end
 		end)
+
 		FarmLog("Invisibility enabled")
 	end
 
