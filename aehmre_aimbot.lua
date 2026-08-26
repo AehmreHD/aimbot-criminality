@@ -85,6 +85,8 @@ local Settings = {
 	WallCheck = true,
 	AutoShoot = true,
 	ESPEnabled = true,
+	ShowESPUsername = false,
+	ESPUsernameSize = 14,
 	ShowFOV = true,
 	FOVPulse = true,
 	TargetIndicator = true,
@@ -1071,6 +1073,8 @@ local function WispAllESPRemnants()
 	for _, object in ipairs(workspace:GetDescendants()) do
 		if object:IsA("Highlight") and (object.Name == "TestESP_Highlight" or object.Name == "Ligia_Premium_ESP") then
 			pcall(function() object:Destroy() end)
+		elseif object:IsA("BillboardGui") and object.Name == "TestESP_Username" then
+			pcall(function() object:Destroy() end)
 		end
 	end
 end
@@ -1106,6 +1110,56 @@ local function UpdateCharacterESP(character, color, allowed)
 	end
 end
 
+local function UpdatePlayerUsernameESP(player, color)
+	if player == LocalPlayer then return end
+
+	local character = player.Character
+	if not character then return end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local adornee = character:FindFirstChild("Head") or GetCharacterRoot(character)
+	local billboard = character:FindFirstChild("TestESP_Username")
+	local shouldShow = AccessNoticeDismissed
+		and Settings.Enabled
+		and Settings.ESPEnabled
+		and Settings.DetectPlayers
+		and Settings.ShowESPUsername
+		and humanoid
+		and humanoid.Health > 0
+		and adornee
+
+	if shouldShow then
+		if not billboard then
+			billboard = Instance.new("BillboardGui")
+			billboard.Name = "TestESP_Username"
+			billboard.Size = UDim2.new(0, 200, 0, 40)
+			billboard.StudsOffset = Vector3.new(0, 3, 0)
+			billboard.AlwaysOnTop = true
+			billboard.Parent = character
+
+			local label = Instance.new("TextLabel")
+			label.Name = "Username"
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Font = Enum.Font.GothamBold
+			label.TextStrokeTransparency = 0.35
+			label.TextStrokeColor3 = Color3.new(0, 0, 0)
+			label.Parent = billboard
+		end
+
+		billboard.Adornee = adornee
+
+		local label = billboard:FindFirstChild("Username")
+		if label then
+			label.Text = player.Name
+			label.TextSize = Settings.ESPUsernameSize
+			label.TextColor3 = color
+		end
+	elseif billboard then
+		billboard:Destroy()
+	end
+end
+
 local function UpdatePlayerESP(player)
 	if player == LocalPlayer then return end
 
@@ -1114,6 +1168,7 @@ local function UpdatePlayerESP(player)
 
 	local color = player.TeamColor and player.TeamColor.Color or Styles.Accent
 	UpdateCharacterESP(character, color, Settings.DetectPlayers)
+	UpdatePlayerUsernameESP(player, color)
 end
 
 local function UpdateNPCESP(model)
@@ -2759,6 +2814,16 @@ end)
 AddDashboardButton(AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
 AddDashboardButton(AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
 AddDashboardDropdown(AimPage, "TargetPart", "Target Part", {"Head", "HumanoidRootPart", "Torso"}, "Select the body part used for target locking.")
+
+AddDashboardButton(AimPage, "ShowESPUsername", "Show ESP Username", "Shows each detected player's username above their ESP highlight.", "Uses the player's real Roblox username.", function()
+	RefreshAllESP()
+end)
+
+AddDashboardSlider(AimPage, "ESPUsernameSize", "ESP Username Size", 8, 32, "Controls the username text size above highlighted players.", "Default size: 14.", function(value)
+	Settings.ESPUsernameSize = math.floor(value + 0.5)
+	RefreshAllESP()
+end, 0)
+
 -- NEW: Configurable Visual Enhancements Hooked to UI
 AddDashboardButton(AimPage, "TargetIndicator", "Draw Target Indicator", "★ Aimbot Customization: Realtime Tracking UI", "Spawns a highly responsive neon circle exactly over the enemy hit-part.")
 AddDashboardButton(AimPage, "FOVPulse", "FOV Pulse Animation", "★ Aimbot Customization: Action Feedback Response", "Pulses the main threat boundary ring smoothly when target acquisition is active.")
