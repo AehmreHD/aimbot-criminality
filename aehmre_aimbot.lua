@@ -97,6 +97,7 @@ local Settings = {
 	FarmEnabled = false,
 	FarmAutoMoney = false,
 	FarmInvisibility = false,
+	FarmInvisSpeed = 12,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -814,7 +815,7 @@ local Farm = (function()
 				FarmInvisWarningLabel.Visible = not IsFarmInvisGrounded()
 			end
 
-			local speed = 12
+			local speed = Settings.FarmInvisSpeed
 
 			if FarmInvisHumanoid.MoveDirection.Magnitude > 0 then
 				local move = FarmInvisHumanoid.MoveDirection * speed * dt
@@ -2794,6 +2795,10 @@ end)
 AddDashboardButton(FarmPage, "FarmInvisibility", "Invisibility (R6)", "Enables the R6 invisibility mode from the farm hub.", "Only runs while enabled and caches character parts.", function(enabled)
 	if enabled then Farm.EnableInvisibility() else Farm.DisableInvisibility() end
 end)
+
+AddDashboardSlider(FarmPage, "FarmInvisSpeed", "Invisibility Speed", 1, 40, "Controls movement speed while invisibility is active.", "12 is the default speed.", function(value)
+	Settings.FarmInvisSpeed = math.floor(value + 0.5)
+end, 0)
 
 AddDashboardButton(FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle kick while enabled.", "Uses one Idled connection instead of a frame loop.", function(enabled)
 	if enabled then Farm.EnableAntiAFK() else Farm.DisableAntiAFK() end
