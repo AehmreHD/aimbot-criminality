@@ -85,6 +85,7 @@ local Settings = {
 	WallCheck = true,
 	AutoShoot = true,
 	ESPEnabled = true,
+	ShowMarkedPlayerESP = false,
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
 	ShowFOV = true,
@@ -160,6 +161,30 @@ local Styles = {
 	TextMain = Color3.fromRGB(245, 245, 248),
 	TextDark = Color3.fromRGB(145, 145, 155)
 }
+
+local StrokePalette = {
+	Color3.fromRGB(235, 45, 60),
+	Color3.fromRGB(70, 235, 120),
+	Color3.fromRGB(245, 245, 248)
+}
+
+local StrokePaletteCursor = 0
+
+local function ApplyPaletteStroke(stroke, forcedIndex)
+	local index = forcedIndex
+	if not index then
+		StrokePaletteCursor = (StrokePaletteCursor % #StrokePalette) + 1
+		index = StrokePaletteCursor
+	end
+	stroke:SetAttribute("AehmreStrokePaletteIndex", index)
+	stroke.Color = StrokePalette[index]
+	return StrokePalette[index]
+end
+
+local function GetPaletteStrokeColor(stroke)
+	local index = stroke:GetAttribute("AehmreStrokePaletteIndex")
+	return StrokePalette[index] or StrokePalette[3]
+end
 
 local OriginalLighting = {
 	Brightness = Lighting.Brightness,
@@ -1004,8 +1029,10 @@ local Farm = (function()
 end)()
 
 --// Drawing Vector FOV Crosshair & Target Indicator Framework
+local FOVIdleColor = Color3.fromRGB(220, 35, 45)
+
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Color = Styles.Accent
+FOVCircle.Color = FOVIdleColor
 FOVCircle.Thickness = 1.5
 FOVCircle.NumSides = 64
 FOVCircle.Filled = false
@@ -1052,6 +1079,12 @@ local FOVPulseSpeed = 6
 local FOVSizePulseAmount = 8
 
 local TrackedNPCs = {}
+local MarkedESP = {
+	SelectedPlayer = nil,
+	DropdownRefresh = nil,
+	DropdownResetUI = nil,
+	Color = Color3.fromRGB(255, 235, 45)
+}
 
 local function IsNPCModel(model)
 	if not model or not model:IsA("Model") then return false end
@@ -1071,7 +1104,7 @@ end
 
 local function WispAllESPRemnants()
 	for _, object in ipairs(workspace:GetDescendants()) do
-		if object:IsA("Highlight") and (object.Name == "TestESP_Highlight" or object.Name == "Ligia_Premium_ESP") then
+		if object:IsA("Highlight") and (object.Name == "TestESP_Highlight" or object.Name == "Ligia_Premium_ESP" or object.Name == "AehmreMarkedPlayerESP") then
 			pcall(function() object:Destroy() end)
 		elseif object:IsA("BillboardGui") and object.Name == "TestESP_Username" then
 			pcall(function() object:Destroy() end)
@@ -1110,6 +1143,38 @@ local function UpdateCharacterESP(character, color, allowed)
 	end
 end
 
+local function UpdateMarkedPlayerESP(player)
+	if player == LocalPlayer then return end
+
+	local character = player.Character
+	if not character then return end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local highlight = character:FindFirstChild("AehmreMarkedPlayerESP")
+	local shouldShow = AccessNoticeDismissed
+		and Settings.Enabled
+		and Settings.ShowMarkedPlayerESP
+		and player == MarkedESP.SelectedPlayer
+		and humanoid
+		and humanoid.Health > 0
+
+	if shouldShow then
+		if not highlight then
+			highlight = Instance.new("Highlight")
+			highlight.Name = "AehmreMarkedPlayerESP"
+			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			highlight.Parent = character
+		end
+
+		highlight.FillColor = MarkedESP.Color
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 190)
+		highlight.FillTransparency = 0.12
+		highlight.OutlineTransparency = 0
+	elseif highlight then
+		highlight:Destroy()
+	end
+end
+
 local function UpdatePlayerUsernameESP(player, color)
 	if player == LocalPlayer then return end
 
@@ -1119,11 +1184,11 @@ local function UpdatePlayerUsernameESP(player, color)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local adornee = character:FindFirstChild("Head") or GetCharacterRoot(character)
 	local billboard = character:FindFirstChild("TestESP_Username")
+	local isMarked = Settings.ShowMarkedPlayerESP and player == MarkedESP.SelectedPlayer
+	local showNormalUsername = Settings.ESPEnabled and Settings.DetectPlayers and Settings.ShowESPUsername
 	local shouldShow = AccessNoticeDismissed
 		and Settings.Enabled
-		and Settings.ESPEnabled
-		and Settings.DetectPlayers
-		and Settings.ShowESPUsername
+		and (showNormalUsername or isMarked)
 		and humanoid
 		and humanoid.Health > 0
 		and adornee
@@ -1132,7 +1197,7 @@ local function UpdatePlayerUsernameESP(player, color)
 		if not billboard then
 			billboard = Instance.new("BillboardGui")
 			billboard.Name = "TestESP_Username"
-			billboard.Size = UDim2.new(0, 200, 0, 40)
+			billboard.Size = UDim2.new(0, 220, 0, 44)
 			billboard.StudsOffset = Vector3.new(0, 3, 0)
 			billboard.AlwaysOnTop = true
 			billboard.Parent = character
@@ -1142,8 +1207,6 @@ local function UpdatePlayerUsernameESP(player, color)
 			label.Size = UDim2.new(1, 0, 1, 0)
 			label.BackgroundTransparency = 1
 			label.Font = Enum.Font.GothamBold
-			label.TextStrokeTransparency = 0.35
-			label.TextStrokeColor3 = Color3.new(0, 0, 0)
 			label.Parent = billboard
 		end
 
@@ -1153,7 +1216,9 @@ local function UpdatePlayerUsernameESP(player, color)
 		if label then
 			label.Text = player.Name
 			label.TextSize = Settings.ESPUsernameSize
-			label.TextColor3 = color
+			label.TextColor3 = isMarked and MarkedESP.Color or color
+			label.TextStrokeColor3 = isMarked and MarkedESP.Color or Color3.new(0, 0, 0)
+			label.TextStrokeTransparency = isMarked and 0.15 or 0.35
 		end
 	elseif billboard then
 		billboard:Destroy()
@@ -1168,7 +1233,38 @@ local function UpdatePlayerESP(player)
 
 	local color = player.TeamColor and player.TeamColor.Color or Styles.Accent
 	UpdateCharacterESP(character, color, Settings.DetectPlayers)
+	UpdateMarkedPlayerESP(player)
 	UpdatePlayerUsernameESP(player, color)
+end
+
+local function SetMarkedPlayer(player)
+	local previous = MarkedESP.SelectedPlayer
+	MarkedESP.SelectedPlayer = player
+
+	if previous and previous ~= player then
+		UpdatePlayerESP(previous)
+	end
+
+	if player then
+		UpdatePlayerESP(player)
+	end
+
+	if MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
+	end
+end
+
+local function ResetMarkedPlayerSelection()
+	local previous = MarkedESP.SelectedPlayer
+	MarkedESP.SelectedPlayer = nil
+
+	if previous then
+		UpdatePlayerESP(previous)
+	end
+
+	if MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
+	end
 end
 
 local function UpdateNPCESP(model)
@@ -1189,6 +1285,12 @@ local function SetupESPPlayer(player)
 	local function CharacterAdded(character)
 		local humanoid = character:WaitForChild("Humanoid", 10)
 		if not humanoid then return end
+
+		if MarkedESP.SelectedPlayer then
+			ResetMarkedPlayerSelection()
+		elseif MarkedESP.DropdownResetUI then
+			MarkedESP.DropdownResetUI()
+		end
 
 		UpdatePlayerESP(player)
 
@@ -1267,7 +1369,27 @@ for _, descendant in ipairs(workspace:GetDescendants()) do
 	end
 end
 
-SafeConnect(Players.PlayerAdded, SetupESPPlayer)
+SafeConnect(Players.PlayerAdded, function(player)
+	SetupESPPlayer(player)
+	if MarkedESP.DropdownRefresh then task.defer(MarkedESP.DropdownRefresh) end
+end)
+
+SafeConnect(Players.PlayerRemoving, function()
+	if MarkedESP.SelectedPlayer then
+		ResetMarkedPlayerSelection()
+	elseif MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
+	end
+	if MarkedESP.DropdownRefresh then task.defer(MarkedESP.DropdownRefresh) end
+end)
+
+SafeConnect(LocalPlayer.CharacterAdded, function()
+	if MarkedESP.SelectedPlayer then
+		ResetMarkedPlayerSelection()
+	elseif MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
+	end
+end)
 
 SafeConnect(workspace.DescendantAdded, function(descendant)
 	if descendant:IsA("Humanoid") or descendant.Name == "HumanoidRootPart" or descendant.Name == "UpperTorso" or descendant.Name == "Torso" then
@@ -1545,7 +1667,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 				FOVCircle.Transparency = 1
 			end
 		else
-			FOVCircle.Color = Styles.Accent
+			FOVCircle.Color = FOVIdleColor
 			FOVCircle.Radius = Settings.FOVRadius
 			FOVCircle.Transparency = 1
 		end
@@ -1890,7 +2012,7 @@ MobileAimButton.ZIndex = 51
 Instance.new("UICorner", MobileAimButton).CornerRadius = UDim.new(0, 10)
 
 local MobileAimStroke = Instance.new("UIStroke", MobileAimButton)
-MobileAimStroke.Color = Styles.Accent
+ApplyPaletteStroke(MobileAimStroke, 1)
 MobileAimStroke.Thickness = 1.5
 
 MobileMenuButton = Instance.new("TextButton", MobileControls)
@@ -1907,7 +2029,7 @@ MobileMenuButton.ZIndex = 51
 Instance.new("UICorner", MobileMenuButton).CornerRadius = UDim.new(0, 10)
 
 local MobileMenuStroke = Instance.new("UIStroke", MobileMenuButton)
-MobileMenuStroke.Color = Styles.Border
+ApplyPaletteStroke(MobileMenuStroke, 3)
 MobileMenuStroke.Thickness = 1.5
 
 HookButtonAnimations(MobileAimButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
@@ -1960,7 +2082,7 @@ end)
 
 local MainStroke = Instance.new("UIStroke", MainFrame)
 MainStroke.Thickness = Settings.BorderThickness
-MainStroke.Color = Styles.Border
+ApplyPaletteStroke(MainStroke, 1)
 MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local HeaderBar = Instance.new("Frame", MainFrame)
@@ -2005,7 +2127,7 @@ Title.Size = UDim2.new(0.3, 0, 1, 0)
 Title.Position = UDim2.new(0.03, 0, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Styles.TextMain
-Title.Text = "Aehmre's Aimbot Hub"
+Title.Text = "Aehmre Ultimate Hub"
 Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -2097,10 +2219,10 @@ local ActiveDotLabel = Instance.new("TextLabel", ProfileContainer)
 ActiveDotLabel.Size = UDim2.new(0.65, 0, 0, 14)
 ActiveDotLabel.Position = UDim2.new(0.34, 0, 0.52, 0)
 ActiveDotLabel.BackgroundTransparency = 1
-ActiveDotLabel.Text = "● Active"
+ActiveDotLabel.Text = "* Active"
 ActiveDotLabel.Font = Enum.Font.GothamBold
 ActiveDotLabel.TextSize = 10
-ActiveDotLabel.TextColor3 = Styles.Accent
+ActiveDotLabel.TextColor3 = Color3.fromRGB(70, 235, 120)
 ActiveDotLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 local SideLayout = Instance.new("UIListLayout", SidebarContainer)
@@ -2129,7 +2251,7 @@ ShortcutTitle.BackgroundTransparency = 1
 ShortcutTitle.Text = "SHORTCUTS"
 ShortcutTitle.Font = Enum.Font.GothamBold
 ShortcutTitle.TextSize = 10
-ShortcutTitle.TextColor3 = Styles.Accent
+ShortcutTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 ShortcutTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 ShortcutList = Instance.new("TextLabel", ShortcutsFrame)
@@ -2145,15 +2267,15 @@ UpdateLeftPanelShortcuts()
 local SystemStatusBtn = Instance.new("TextButton", Sidebar)
 SystemStatusBtn.Size = UDim2.new(0.84, 0, 0, 32)
 SystemStatusBtn.Position = UDim2.new(0.08, 0, 1, -38)
-SystemStatusBtn.BackgroundColor3 = Styles.Accent
+SystemStatusBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 SystemStatusBtn.Font = Enum.Font.GothamBold
 SystemStatusBtn.Text = "SYSTEM WORKING"
-SystemStatusBtn.TextColor3 = Color3.fromRGB(12, 15, 13)
+SystemStatusBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
 SystemStatusBtn.TextSize = 10
 SystemStatusBtn.BorderSizePixel = 0
 SystemStatusBtn.AutoButtonColor = false
 Instance.new("UICorner", SystemStatusBtn).CornerRadius = UDim.new(0, 6)
-HookButtonAnimations(SystemStatusBtn, Styles.Accent, Styles.Accent:Lerp(Color3.fromRGB(255,255,255), 0.15))
+HookButtonAnimations(SystemStatusBtn, Color3.fromRGB(255, 255, 255), Color3.fromRGB(225, 225, 230))
 
 local SearchBarFrame = Instance.new("Frame", RightContentWindow)
 SearchBarFrame.Size = UDim2.new(0.94, 0, 0, 30)
@@ -2162,7 +2284,7 @@ SearchBarFrame.BackgroundColor3 = Color3.fromRGB(22, 23, 29)
 SearchBarFrame.BorderSizePixel = 0
 Instance.new("UICorner", SearchBarFrame).CornerRadius = UDim.new(0, 6)
 local SearchStroke = Instance.new("UIStroke", SearchBarFrame)
-SearchStroke.Color = Styles.Border
+ApplyPaletteStroke(SearchStroke, 2)
 
 local SearchPlaceholder = Instance.new("TextBox", SearchBarFrame)
 SearchPlaceholder.Size = UDim2.new(0.95, 0, 1, 0)
@@ -2273,7 +2395,7 @@ SystemLogEvent = function(msg)
 	LogCard.BackgroundColor3 = Styles.CardBg
 	LogCard.BorderSizePixel = 0
 	Instance.new("UICorner", LogCard).CornerRadius = UDim.new(0, 4)
-	Instance.new("UIStroke", LogCard).Color = Styles.Border
+	ApplyPaletteStroke(Instance.new("UIStroke", LogCard))
 
 	local LogText = Instance.new("TextLabel", LogCard)
 	LogText.Size = UDim2.new(0.96, 0, 1, 0)
@@ -2341,7 +2463,7 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 	Card.BorderSizePixel = 0
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
 	local Stroke = Instance.new("UIStroke", Card)
-	Stroke.Color = Styles.Border
+	ApplyPaletteStroke(Stroke)
 
 	local TitleLabel = Instance.new("TextLabel", Card)
 	TitleLabel.Size = UDim2.new(0.7, 0, 0, 18)
@@ -2394,7 +2516,7 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 		TweenObj(Card, { BackgroundColor3 = Styles.CardHover }, 0.2) 
 	end)
 	Card.MouseLeave:Connect(function() 
-		TweenObj(Stroke, { Color = Styles.Border }, 0.2) 
+		TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2) 
 		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2) 
 	end)
 
@@ -2439,7 +2561,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	Card.BorderSizePixel = 0
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
 	local Stroke = Instance.new("UIStroke", Card)
-	Stroke.Color = Styles.Border
+	ApplyPaletteStroke(Stroke)
 
 	local TitleLabel = Instance.new("TextLabel", Card)
 	TitleLabel.Size = UDim2.new(0.7, 0, 0, 16)
@@ -2510,7 +2632,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	Knob.BackgroundColor3 = Styles.TextMain
 	Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
 	local KnobStroke = Instance.new("UIStroke", Knob)
-	KnobStroke.Color = Styles.Accent
+	ApplyPaletteStroke(KnobStroke)
 	KnobStroke.Thickness = 2
 
 	Card.MouseEnter:Connect(function() 
@@ -2518,7 +2640,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 		TweenObj(Card, { BackgroundColor3 = Styles.CardHover }, 0.2) 
 	end)
 	Card.MouseLeave:Connect(function() 
-		TweenObj(Stroke, { Color = Styles.Border }, 0.2) 
+		TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2) 
 		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2) 
 	end)
 
@@ -2593,7 +2715,7 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
 
 	local Stroke = Instance.new("UIStroke", Card)
-	Stroke.Color = Styles.Border
+	ApplyPaletteStroke(Stroke)
 
 	local TitleLabel = Instance.new("TextLabel", Card)
 	TitleLabel.Size = UDim2.new(0.5, 0, 0, 18)
@@ -2649,7 +2771,7 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 
 		local height = open and (64 + (#options * 30)) or 56
 		TweenObj(Card, { Size = UDim2.new(0.94, 0, 0, height) }, 0.2, Enum.EasingStyle.Quint)
-		TweenObj(Stroke, { Color = open and Styles.Accent or Styles.Border }, 0.2)
+		TweenObj(Stroke, { Color = open and Styles.Accent or GetPaletteStrokeColor(Stroke) }, 0.2)
 	end
 
 	for index, option in ipairs(options) do
@@ -2689,7 +2811,7 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 	end)
 
 	Card.MouseLeave:Connect(function()
-		if not isOpen then TweenObj(Stroke, { Color = Styles.Border }, 0.2) end
+		if not isOpen then TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2) end
 	end)
 
 	UpdateDropdownText()
@@ -2708,7 +2830,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
 
 	local Stroke = Instance.new("UIStroke", Card)
-	Stroke.Color = Styles.Border
+	ApplyPaletteStroke(Stroke)
 
 	local TitleLabel = Instance.new("TextLabel", Card)
 	TitleLabel.Size = UDim2.new(0.62, 0, 0, 18)
@@ -2743,7 +2865,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	Instance.new("UICorner", ValueButton).CornerRadius = UDim.new(0, 5)
 
 	local ValueStroke = Instance.new("UIStroke", ValueButton)
-	ValueStroke.Color = Styles.Border
+	ApplyPaletteStroke(ValueStroke)
 
 	KeybindValueButtons[configKey] = ValueButton
 
@@ -2753,7 +2875,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	end)
 
 	Card.MouseLeave:Connect(function()
-		TweenObj(Stroke, { Color = Styles.Border }, 0.2)
+		TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2)
 		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2)
 	end)
 
@@ -2763,7 +2885,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 
 	ValueButton.MouseLeave:Connect(function()
 		if not KeybindCapture or KeybindCapture.ConfigKey ~= configKey then
-			TweenObj(ValueStroke, { Color = Styles.Border }, 0.15)
+			TweenObj(ValueStroke, { Color = GetPaletteStrokeColor(ValueStroke) }, 0.15)
 		end
 	end)
 
@@ -2797,7 +2919,207 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 			ValueButton.Text = GetKeybindName(Settings[configKey])
 		end
 
-		ValueStroke.Color = Styles.Border
+		ValueStroke.Color = GetPaletteStrokeColor(ValueStroke)
+	end)
+end
+
+local function AddMarkedPlayerDropdown(parentPage)
+	local Card = Instance.new("Frame", parentPage)
+	Card.Size = UDim2.new(0.94, 0, 0, 60)
+	Card.BackgroundColor3 = Styles.CardBg
+	Card.BorderSizePixel = 0
+	Card.ClipsDescendants = true
+	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
+
+	local Stroke = Instance.new("UIStroke", Card)
+	ApplyPaletteStroke(Stroke)
+
+	local TitleLabel = Instance.new("TextLabel", Card)
+	TitleLabel.Size = UDim2.new(0.42, 0, 0, 18)
+	TitleLabel.Position = UDim2.new(0.03, 0, 0, 9)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = "Marked Player"
+	TitleLabel.Font = Enum.Font.GothamSemibold
+	TitleLabel.TextSize = 12
+	TitleLabel.TextColor3 = Styles.TextMain
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DescLabel = Instance.new("TextLabel", Card)
+	DescLabel.Size = UDim2.new(0.42, 0, 0, 16)
+	DescLabel.Position = UDim2.new(0.03, 0, 0, 31)
+	DescLabel.BackgroundTransparency = 1
+	DescLabel.Text = "Select one player to mark."
+	DescLabel.Font = Enum.Font.Gotham
+	DescLabel.TextSize = 9
+	DescLabel.TextColor3 = Styles.TextDark
+	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DropdownButton = Instance.new("TextButton", Card)
+	DropdownButton.Size = UDim2.new(0, 178, 0, IsTouchDevice and 36 or 30)
+	DropdownButton.Position = UDim2.new(0.97, -178, 0, IsTouchDevice and 12 or 15)
+	DropdownButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+	DropdownButton.BorderSizePixel = 0
+	DropdownButton.Font = Enum.Font.GothamSemibold
+	DropdownButton.TextColor3 = Styles.TextMain
+	DropdownButton.TextSize = 10
+	DropdownButton.AutoButtonColor = false
+	Instance.new("UICorner", DropdownButton).CornerRadius = UDim.new(0, 5)
+
+	local OptionsFrame = Instance.new("Frame", Card)
+	OptionsFrame.Size = UDim2.new(0.94, 0, 0, 0)
+	OptionsFrame.Position = UDim2.new(0.03, 0, 0, 66)
+	OptionsFrame.BackgroundTransparency = 1
+	OptionsFrame.Visible = false
+
+	local OptionsLayout = Instance.new("UIListLayout", OptionsFrame)
+	OptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	OptionsLayout.Padding = UDim.new(0, 5)
+
+	local isOpen = false
+
+	local function GetSelectablePlayers()
+		local result = {}
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				table.insert(result, player)
+			end
+		end
+		table.sort(result, function(a, b)
+			return a.Name:lower() < b.Name:lower()
+		end)
+		return result
+	end
+
+	local function UpdateButtonText()
+		local selected = MarkedESP.SelectedPlayer
+		if selected and selected.Parent == Players then
+			DropdownButton.Text = selected.Name .. (isOpen and "  ▲" or "  ▼")
+			DropdownButton.TextColor3 = MarkedESP.Color
+		else
+			DropdownButton.Text = "Select Player" .. (isOpen and "  ▲" or "  ▼")
+			DropdownButton.TextColor3 = Styles.TextMain
+		end
+	end
+
+	local function ClearEntries()
+		for _, child in ipairs(OptionsFrame:GetChildren()) do
+			if not child:IsA("UIListLayout") then
+				child:Destroy()
+			end
+		end
+	end
+
+	local RefreshEntries
+	local SetOpen
+
+	RefreshEntries = function()
+		ClearEntries()
+
+		local players = GetSelectablePlayers()
+
+		for index, player in ipairs(players) do
+			local Entry = Instance.new("TextButton", OptionsFrame)
+			Entry.Size = UDim2.new(1, 0, 0, 46)
+			Entry.LayoutOrder = index
+			Entry.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
+			Entry.BorderSizePixel = 0
+			Entry.Text = ""
+			Entry.AutoButtonColor = false
+			Instance.new("UICorner", Entry).CornerRadius = UDim.new(0, 6)
+
+			local EntryStroke = Instance.new("UIStroke", Entry)
+			ApplyPaletteStroke(EntryStroke)
+
+			local Avatar = Instance.new("ImageLabel", Entry)
+			Avatar.Size = UDim2.new(0, 34, 0, 34)
+			Avatar.Position = UDim2.new(0, 7, 0.5, -17)
+			Avatar.BackgroundColor3 = Color3.fromRGB(35, 36, 45)
+			Avatar.BorderSizePixel = 0
+			Instance.new("UICorner", Avatar).CornerRadius = UDim.new(1, 0)
+
+			local NameLabel = Instance.new("TextLabel", Entry)
+			NameLabel.Size = UDim2.new(1, -54, 1, 0)
+			NameLabel.Position = UDim2.new(0, 48, 0, 0)
+			NameLabel.BackgroundTransparency = 1
+			NameLabel.Text = player.Name
+			NameLabel.Font = Enum.Font.GothamBold
+			NameLabel.TextSize = 11
+			NameLabel.TextColor3 = player == MarkedESP.SelectedPlayer and MarkedESP.Color or Styles.TextMain
+			NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+			task.spawn(function()
+				local success, image = pcall(function()
+					local content = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+					return content
+				end)
+				if success and Avatar.Parent then
+					Avatar.Image = image
+				end
+			end)
+
+			Entry.MouseEnter:Connect(function()
+				TweenObj(Entry, { BackgroundColor3 = Styles.CardHover }, 0.15)
+				TweenObj(EntryStroke, { Color = MarkedESP.Color }, 0.15)
+			end)
+
+			Entry.MouseLeave:Connect(function()
+				TweenObj(Entry, { BackgroundColor3 = Color3.fromRGB(26, 27, 35) }, 0.15)
+				TweenObj(EntryStroke, { Color = GetPaletteStrokeColor(EntryStroke) }, 0.15)
+			end)
+
+			Entry.MouseButton1Click:Connect(function()
+				SetMarkedPlayer(player)
+				SetOpen(false)
+				RefreshEntries()
+			end)
+		end
+
+		OptionsFrame.Size = UDim2.new(0.94, 0, 0, #players * 51)
+		if isOpen then
+			Card.Size = UDim2.new(0.94, 0, 0, 72 + #players * 51)
+		end
+		UpdateButtonText()
+	end
+
+	SetOpen = function(open)
+		isOpen = open
+		if open then
+			RefreshEntries()
+		end
+		OptionsFrame.Visible = open
+		UpdateButtonText()
+
+		local count = #GetSelectablePlayers()
+		local height = open and (72 + count * 51) or 60
+		TweenObj(Card, { Size = UDim2.new(0.94, 0, 0, height) }, 0.2, Enum.EasingStyle.Quint)
+		TweenObj(Stroke, { Color = open and MarkedESP.Color or GetPaletteStrokeColor(Stroke) }, 0.2)
+	end
+
+	DropdownButton.MouseButton1Click:Connect(function()
+		SetOpen(not isOpen)
+	end)
+
+	Card.MouseEnter:Connect(function()
+		if not isOpen then TweenObj(Stroke, { Color = MarkedESP.Color }, 0.2) end
+	end)
+
+	Card.MouseLeave:Connect(function()
+		if not isOpen then TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2) end
+	end)
+
+	MarkedESP.DropdownRefresh = RefreshEntries
+	MarkedESP.DropdownResetUI = function()
+		isOpen = false
+		OptionsFrame.Visible = false
+		Card.Size = UDim2.new(0.94, 0, 0, 60)
+		RefreshEntries()
+	end
+
+	RefreshEntries()
+
+	table.insert(UIUpdaters, function()
+		ResetMarkedPlayerSelection()
+		RefreshEntries()
 	end)
 end
 
@@ -2830,6 +3152,12 @@ AddDashboardButton(AimPage, "FOVPulse", "FOV Pulse Animation", "★ Aimbot Custo
 
 AddDashboardSlider(AimPage, "Smoothness", "Tracking Camera Smoothness", 1, 100, "★ Optimal Placement: Low-Medium (Natural Damping) (0.15)", "Alters tracking dampening alignment latency to emulate natural aim.")
 AddDashboardSlider(AimPage, "MaxDistance", "Target Maximum Distance", 50, 5000, "★ Optimal Placement: Low (Safe Render Limit) (1000)", "Calculates the ultimate cut-off barrier stud threshold for lock acquisition.")
+
+AddDashboardButton(VisPage, "ShowMarkedPlayerESP", "Show Marked Player ESP", "Marks one selected player with a bright yellow ESP.", "Selection resets if that player respawns or leaves.", function()
+	RefreshAllESP()
+end)
+
+AddMarkedPlayerDropdown(VisPage)
 
 AddDashboardButton(VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
 AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
@@ -2887,7 +3215,7 @@ CycleColorBtn.TextSize = 10
 CycleColorBtn.BorderSizePixel = 0
 Instance.new("UICorner", CycleColorBtn).CornerRadius = UDim.new(0, 6)
 local CycleStroke = Instance.new("UIStroke", CycleColorBtn)
-CycleStroke.Color = Styles.Accent
+ApplyPaletteStroke(CycleStroke)
 HookButtonAnimations(CycleColorBtn, Styles.CardBg, Styles.CardHover)
 
 CycleColorBtn.MouseButton1Click:Connect(function()
@@ -2896,15 +3224,15 @@ CycleColorBtn.MouseButton1Click:Connect(function()
 	local currentAccent = AccentPresets[Settings.AccentColorIndex]
 
 	Styles.Accent = currentAccent
-	FOVCircle.Color = currentAccent
+	FOVCircle.Color = FOVIdleColor
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
 	SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
-	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
-	TweenObj(ShortcutTitle, { TextColor3 = currentAccent }, 0.25)
+	TweenObj(SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
+	TweenObj(ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(SubTitle, { TextColor3 = currentAccent }, 0.25)
 	for _, tData in pairs(Tabs) do
 		tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
@@ -2939,7 +3267,7 @@ SaveConfigBtn.TextSize = 10
 SaveConfigBtn.BorderSizePixel = 0
 Instance.new("UICorner", SaveConfigBtn).CornerRadius = UDim.new(0, 6)
 local SaveStroke = Instance.new("UIStroke", SaveConfigBtn)
-SaveStroke.Color = Styles.Accent
+ApplyPaletteStroke(SaveStroke)
 HookButtonAnimations(SaveConfigBtn, Color3.fromRGB(35, 40, 50), Color3.fromRGB(45, 50, 65))
 
 SaveConfigBtn.MouseButton1Click:Connect(function()
@@ -2979,6 +3307,7 @@ local function FactoryResetSettings()
 
 	UpdateFullbright(false)
 	Farm.Cleanup()
+	ResetMarkedPlayerSelection()
 	RefreshAllESP()
 
 	FOVCircle.Visible = false
@@ -2989,15 +3318,15 @@ local function FactoryResetSettings()
 
 	local currentAccent = AccentPresets[Settings.AccentColorIndex]
 	Styles.Accent = currentAccent
-	FOVCircle.Color = currentAccent
+	FOVCircle.Color = FOVIdleColor
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
 	SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(SystemStatusBtn, { BackgroundColor3 = currentAccent }, 0.25)
-	TweenObj(ActiveDotLabel, { TextColor3 = currentAccent }, 0.25)
-	TweenObj(ShortcutTitle, { TextColor3 = currentAccent }, 0.25)
+	TweenObj(SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
+	TweenObj(ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(SubTitle, { TextColor3 = currentAccent }, 0.25)
 
 	for _, tData in pairs(Tabs) do
@@ -3041,7 +3370,7 @@ Instance.new("UICorner", AuthFrame).CornerRadius = UDim.new(0, 10)
 AuthUIScale = Instance.new("UIScale", AuthFrame)
 
 local AuthStroke = Instance.new("UIStroke", AuthFrame)
-AuthStroke.Color = Styles.Accent
+ApplyPaletteStroke(AuthStroke, 1)
 AuthStroke.Thickness = 1.5
 
 local AuthHeader = Instance.new("Frame", AuthFrame)
@@ -3070,7 +3399,7 @@ local AuthSubTitle = Instance.new("TextLabel", AuthHeader)
 AuthSubTitle.Size = UDim2.new(1, -28, 0, 14)
 AuthSubTitle.Position = UDim2.new(0, 14, 0, 25)
 AuthSubTitle.BackgroundTransparency = 1
-AuthSubTitle.Text = "AIMBOT HUB"
+AuthSubTitle.Text = "ULTIMATE HUB"
 AuthSubTitle.Font = Enum.Font.GothamSemibold
 AuthSubTitle.TextSize = 9
 AuthSubTitle.TextColor3 = Styles.Accent
@@ -3105,7 +3434,7 @@ KeyInput.Selectable = false
 Instance.new("UICorner", KeyInput).CornerRadius = UDim.new(0, 6)
 
 local KeyStroke = Instance.new("UIStroke", KeyInput)
-KeyStroke.Color = Styles.Border
+ApplyPaletteStroke(KeyStroke, 3)
 
 local CopyDiscordBtn = Instance.new("TextButton", AuthFrame)
 CopyDiscordBtn.Size = UDim2.new(0.5, -20, 0, 36)
