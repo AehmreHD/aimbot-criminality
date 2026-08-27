@@ -662,11 +662,13 @@ local Farm = (function()
 	local function EnsureFarmInvisWarning()
 		if FarmInvisWarningGui and FarmInvisWarningGui.Parent then return end
 
+		local coreGui = game:GetService("CoreGui")
+
 		FarmInvisWarningGui = Instance.new("ScreenGui")
 		FarmInvisWarningGui.Name = "AehmreInvisWarningGUI"
 		FarmInvisWarningGui.ResetOnSpawn = false
 		FarmInvisWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		FarmInvisWarningGui.Parent = PlayerGui
+		FarmInvisWarningGui.Parent = coreGui
 
 		FarmInvisWarningLabel = Instance.new("TextLabel")
 		FarmInvisWarningLabel.Text = "⚠️ YOU ARE VISIBLE ⚠️"
@@ -1079,9 +1081,8 @@ local FOVSizePulseAmount = 8
 local TrackedNPCs = {}
 local MarkedESP = {
 	SelectedPlayer = nil,
-	DropdownAddOrUpdate = nil,
-	DropdownRemove = nil,
-	DropdownUpdateSelection = nil,
+	DropdownRefresh = nil,
+	DropdownResetUI = nil,
 	Color = Color3.fromRGB(255, 235, 45)
 }
 
@@ -1248,8 +1249,8 @@ local function SetMarkedPlayer(player)
 		UpdatePlayerESP(player)
 	end
 
-	if MarkedESP.DropdownUpdateSelection then
-		MarkedESP.DropdownUpdateSelection()
+	if MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
 	end
 end
 
@@ -1261,8 +1262,8 @@ local function ResetMarkedPlayerSelection()
 		UpdatePlayerESP(previous)
 	end
 
-	if MarkedESP.DropdownUpdateSelection then
-		MarkedESP.DropdownUpdateSelection()
+	if MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
 	end
 end
 
@@ -1285,12 +1286,10 @@ local function SetupESPPlayer(player)
 		local humanoid = character:WaitForChild("Humanoid", 10)
 		if not humanoid then return end
 
-		if MarkedESP.SelectedPlayer == player then
+		if MarkedESP.SelectedPlayer then
 			ResetMarkedPlayerSelection()
-		end
-
-		if MarkedESP.DropdownAddOrUpdate then
-			task.defer(MarkedESP.DropdownAddOrUpdate, player)
+		elseif MarkedESP.DropdownResetUI then
+			MarkedESP.DropdownResetUI()
 		end
 
 		UpdatePlayerESP(player)
@@ -1372,18 +1371,23 @@ end
 
 SafeConnect(Players.PlayerAdded, function(player)
 	SetupESPPlayer(player)
-	if MarkedESP.DropdownAddOrUpdate then
-		task.defer(MarkedESP.DropdownAddOrUpdate, player)
-	end
+	if MarkedESP.DropdownRefresh then task.defer(MarkedESP.DropdownRefresh) end
 end)
 
-SafeConnect(Players.PlayerRemoving, function(player)
-	if MarkedESP.SelectedPlayer == player then
+SafeConnect(Players.PlayerRemoving, function()
+	if MarkedESP.SelectedPlayer then
 		ResetMarkedPlayerSelection()
+	elseif MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
 	end
+	if MarkedESP.DropdownRefresh then task.defer(MarkedESP.DropdownRefresh) end
+end)
 
-	if MarkedESP.DropdownRemove then
-		MarkedESP.DropdownRemove(player)
+SafeConnect(LocalPlayer.CharacterAdded, function()
+	if MarkedESP.SelectedPlayer then
+		ResetMarkedPlayerSelection()
+	elseif MarkedESP.DropdownResetUI then
+		MarkedESP.DropdownResetUI()
 	end
 end)
 
@@ -2972,22 +2976,18 @@ local function AddMarkedPlayerDropdown(parentPage)
 	OptionsLayout.Padding = UDim.new(0, 5)
 
 	local isOpen = false
-	local PlayerEntries = {}
 
-	local function GetEntryCount()
-		local count = 0
-		for player, data in pairs(PlayerEntries) do
-			if player.Parent == Players and data.Entry and data.Entry.Parent then
-				count += 1
+	local function GetSelectablePlayers()
+		local result = {}
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				table.insert(result, player)
 			end
 		end
-		return count
-	end
-
-	local function UpdateCardHeight()
-		local count = GetEntryCount()
-		OptionsFrame.Size = UDim2.new(0.94, 0, 0, count * 51)
-		Card.Size = UDim2.new(0.94, 0, 0, isOpen and (72 + count * 51) or 60)
+		table.sort(result, function(a, b)
+			return a.Name:lower() < b.Name:lower()
+		end)
+		return result
 	end
 
 	local function UpdateButtonText()
@@ -3001,130 +3001,97 @@ local function AddMarkedPlayerDropdown(parentPage)
 		end
 	end
 
-	local function ReorderEntries()
-		local players = {}
-		for player, data in pairs(PlayerEntries) do
-			if player.Parent == Players and data.Entry and data.Entry.Parent then
-				table.insert(players, player)
+	local function ClearEntries()
+		for _, child in ipairs(OptionsFrame:GetChildren()) do
+			if not child:IsA("UIListLayout") then
+				child:Destroy()
 			end
 		end
+	end
 
-		table.sort(players, function(a, b)
-			return a.Name:lower() < b.Name:lower()
-		end)
+	local RefreshEntries
+	local SetOpen
+
+	RefreshEntries = function()
+		ClearEntries()
+
+		local players = GetSelectablePlayers()
 
 		for index, player in ipairs(players) do
-			PlayerEntries[player].Entry.LayoutOrder = index
-		end
+			local Entry = Instance.new("TextButton", OptionsFrame)
+			Entry.Size = UDim2.new(1, 0, 0, 46)
+			Entry.LayoutOrder = index
+			Entry.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
+			Entry.BorderSizePixel = 0
+			Entry.Text = ""
+			Entry.AutoButtonColor = false
+			Instance.new("UICorner", Entry).CornerRadius = UDim.new(0, 6)
 
-		UpdateCardHeight()
-	end
+			local EntryStroke = Instance.new("UIStroke", Entry)
+			ApplyPaletteStroke(EntryStroke)
 
-	local function UpdateSelectionUI()
-		for player, data in pairs(PlayerEntries) do
-			if data.NameLabel and data.NameLabel.Parent then
-				data.NameLabel.TextColor3 = player == MarkedESP.SelectedPlayer and MarkedESP.Color or Styles.TextMain
-			end
-		end
+			local Avatar = Instance.new("ImageLabel", Entry)
+			Avatar.Size = UDim2.new(0, 34, 0, 34)
+			Avatar.Position = UDim2.new(0, 7, 0.5, -17)
+			Avatar.BackgroundColor3 = Color3.fromRGB(35, 36, 45)
+			Avatar.BorderSizePixel = 0
+			Instance.new("UICorner", Avatar).CornerRadius = UDim.new(1, 0)
 
-		UpdateButtonText()
-	end
+			local NameLabel = Instance.new("TextLabel", Entry)
+			NameLabel.Size = UDim2.new(1, -54, 1, 0)
+			NameLabel.Position = UDim2.new(0, 48, 0, 0)
+			NameLabel.BackgroundTransparency = 1
+			NameLabel.Text = player.Name
+			NameLabel.Font = Enum.Font.GothamBold
+			NameLabel.TextSize = 11
+			NameLabel.TextColor3 = player == MarkedESP.SelectedPlayer and MarkedESP.Color or Styles.TextMain
+			NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	local function RemoveEntry(player)
-		local data = PlayerEntries[player]
-		if not data then return end
-
-		if data.Entry then
-			data.Entry:Destroy()
-		end
-
-		PlayerEntries[player] = nil
-		ReorderEntries()
-		UpdateSelectionUI()
-	end
-
-	local function AddOrUpdateEntry(player)
-		if not player or player == LocalPlayer or player.Parent ~= Players then return end
-
-		local oldData = PlayerEntries[player]
-		if oldData and oldData.Entry then
-			oldData.Entry:Destroy()
-		end
-
-		local Entry = Instance.new("TextButton", OptionsFrame)
-		Entry.Size = UDim2.new(1, 0, 0, 46)
-		Entry.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
-		Entry.BorderSizePixel = 0
-		Entry.Text = ""
-		Entry.AutoButtonColor = false
-		Instance.new("UICorner", Entry).CornerRadius = UDim.new(0, 6)
-
-		local EntryStroke = Instance.new("UIStroke", Entry)
-		ApplyPaletteStroke(EntryStroke)
-
-		local Avatar = Instance.new("ImageLabel", Entry)
-		Avatar.Size = UDim2.new(0, 34, 0, 34)
-		Avatar.Position = UDim2.new(0, 7, 0.5, -17)
-		Avatar.BackgroundColor3 = Color3.fromRGB(35, 36, 45)
-		Avatar.BorderSizePixel = 0
-		Instance.new("UICorner", Avatar).CornerRadius = UDim.new(1, 0)
-
-		local NameLabel = Instance.new("TextLabel", Entry)
-		NameLabel.Size = UDim2.new(1, -54, 1, 0)
-		NameLabel.Position = UDim2.new(0, 48, 0, 0)
-		NameLabel.BackgroundTransparency = 1
-		NameLabel.Text = player.Name
-		NameLabel.Font = Enum.Font.GothamBold
-		NameLabel.TextSize = 11
-		NameLabel.TextColor3 = player == MarkedESP.SelectedPlayer and MarkedESP.Color or Styles.TextMain
-		NameLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-		PlayerEntries[player] = {
-			Entry = Entry,
-			Avatar = Avatar,
-			NameLabel = NameLabel
-		}
-
-		task.spawn(function()
-			local success, image = pcall(function()
-				local content = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
-				return content
+			task.spawn(function()
+				local success, image = pcall(function()
+					local content = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+					return content
+				end)
+				if success and Avatar.Parent then
+					Avatar.Image = image
+				end
 			end)
 
-			local currentData = PlayerEntries[player]
-			if success and currentData and currentData.Avatar == Avatar and Avatar.Parent then
-				Avatar.Image = image
-			end
-		end)
+			Entry.MouseEnter:Connect(function()
+				TweenObj(Entry, { BackgroundColor3 = Styles.CardHover }, 0.15)
+				TweenObj(EntryStroke, { Color = MarkedESP.Color }, 0.15)
+			end)
 
-		Entry.MouseEnter:Connect(function()
-			TweenObj(Entry, { BackgroundColor3 = Styles.CardHover }, 0.15)
-			TweenObj(EntryStroke, { Color = MarkedESP.Color }, 0.15)
-		end)
+			Entry.MouseLeave:Connect(function()
+				TweenObj(Entry, { BackgroundColor3 = Color3.fromRGB(26, 27, 35) }, 0.15)
+				TweenObj(EntryStroke, { Color = GetPaletteStrokeColor(EntryStroke) }, 0.15)
+			end)
 
-		Entry.MouseLeave:Connect(function()
-			TweenObj(Entry, { BackgroundColor3 = Color3.fromRGB(26, 27, 35) }, 0.15)
-			TweenObj(EntryStroke, { Color = GetPaletteStrokeColor(EntryStroke) }, 0.15)
-		end)
+			Entry.MouseButton1Click:Connect(function()
+				SetMarkedPlayer(player)
+				SetOpen(false)
+				RefreshEntries()
+			end)
+		end
 
-		Entry.MouseButton1Click:Connect(function()
-			SetMarkedPlayer(player)
-			isOpen = false
-			OptionsFrame.Visible = false
-			UpdateCardHeight()
-			UpdateSelectionUI()
-			TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2)
-		end)
-
-		ReorderEntries()
-		UpdateSelectionUI()
+		OptionsFrame.Size = UDim2.new(0.94, 0, 0, #players * 51)
+		if isOpen then
+			Card.Size = UDim2.new(0.94, 0, 0, 72 + #players * 51)
+		end
+		UpdateButtonText()
 	end
 
-	local function SetOpen(open)
+	SetOpen = function(open)
 		isOpen = open
+		if open then
+			RefreshEntries()
+		end
 		OptionsFrame.Visible = open
-		UpdateCardHeight()
 		UpdateButtonText()
+
+		local count = #GetSelectablePlayers()
+		local height = open and (72 + count * 51) or 60
+		TweenObj(Card, { Size = UDim2.new(0.94, 0, 0, height) }, 0.2, Enum.EasingStyle.Quint)
 		TweenObj(Stroke, { Color = open and MarkedESP.Color or GetPaletteStrokeColor(Stroke) }, 0.2)
 	end
 
@@ -3140,17 +3107,19 @@ local function AddMarkedPlayerDropdown(parentPage)
 		if not isOpen then TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2) end
 	end)
 
-	MarkedESP.DropdownAddOrUpdate = AddOrUpdateEntry
-	MarkedESP.DropdownRemove = RemoveEntry
-	MarkedESP.DropdownUpdateSelection = UpdateSelectionUI
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		AddOrUpdateEntry(player)
+	MarkedESP.DropdownRefresh = RefreshEntries
+	MarkedESP.DropdownResetUI = function()
+		isOpen = false
+		OptionsFrame.Visible = false
+		Card.Size = UDim2.new(0.94, 0, 0, 60)
+		RefreshEntries()
 	end
+
+	RefreshEntries()
 
 	table.insert(UIUpdaters, function()
 		ResetMarkedPlayerSelection()
-		UpdateSelectionUI()
+		RefreshEntries()
 	end)
 end
 
