@@ -112,6 +112,7 @@ local Settings = {
 	MaxDistance = 1000,
 	AimKey = Enum.KeyCode.B,
 	ToggleUiKey = Enum.KeyCode.L,
+	FarmInvisToggleKey = Enum.KeyCode.V,
 	MenuTransparency = 0,
 	BorderThickness = 1.5,
 	AccentColorIndex = 1
@@ -1841,11 +1842,14 @@ local function UpdateLeftPanelShortcuts()
 		if IsTouchDevice then
 			ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
 		else
+			local invisStatus = Settings.FarmInvisibility and "ON" or "OFF"
 			ShortcutList.Text = string.format(
-				"[%s] Aim Lock: %s\n[%s] Toggle UI",
+				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s",
 				GetKeybindName(Settings.AimKey),
 				statusText,
-				GetKeybindName(Settings.ToggleUiKey)
+				GetKeybindName(Settings.ToggleUiKey),
+				GetKeybindName(Settings.FarmInvisToggleKey),
+				invisStatus
 			)
 		end
 	end
@@ -1924,11 +1928,14 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 		end
 
 		local configKey = capture.ConfigKey
-		local otherConfigKey = configKey == "AimKey" and "ToggleUiKey" or "AimKey"
 		local previousKey = Settings[configKey]
+		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey"}
 
-		if Settings[otherConfigKey] == input.KeyCode then
-			Settings[otherConfigKey] = previousKey
+		for _, otherConfigKey in ipairs(keybindConfigKeys) do
+			if otherConfigKey ~= configKey and Settings[otherConfigKey] == input.KeyCode then
+				Settings[otherConfigKey] = previousKey
+				break
+			end
 		end
 
 		Settings[configKey] = input.KeyCode
@@ -1946,6 +1953,23 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 	if AccessNoticeDismissed and input.KeyCode == Settings.ToggleUiKey then
 		ToggleMainMenu()
+	end
+
+	if AccessNoticeDismissed and input.KeyCode == Settings.FarmInvisToggleKey then
+		Settings.FarmInvisibility = not Settings.FarmInvisibility
+
+		if Settings.FarmInvisibility then
+			Farm.EnableInvisibility()
+		else
+			Farm.DisableInvisibility()
+		end
+
+		for _, updater in ipairs(UIUpdaters) do
+			updater()
+		end
+
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent("Invisibility toggled " .. (Settings.FarmInvisibility and "ON" or "OFF") .. ".")
 	end
 end)
 
@@ -3284,6 +3308,7 @@ end)
 
 AddKeybindControl(KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
+AddKeybindControl(KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
