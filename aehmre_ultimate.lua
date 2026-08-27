@@ -662,13 +662,11 @@ local Farm = (function()
 	local function EnsureFarmInvisWarning()
 		if FarmInvisWarningGui and FarmInvisWarningGui.Parent then return end
 
-		local coreGui = game:GetService("CoreGui")
-
 		FarmInvisWarningGui = Instance.new("ScreenGui")
 		FarmInvisWarningGui.Name = "AehmreInvisWarningGUI"
 		FarmInvisWarningGui.ResetOnSpawn = false
 		FarmInvisWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		FarmInvisWarningGui.Parent = coreGui
+		FarmInvisWarningGui.Parent = PlayerGui
 
 		FarmInvisWarningLabel = Instance.new("TextLabel")
 		FarmInvisWarningLabel.Text = "⚠️ YOU ARE VISIBLE ⚠️"
