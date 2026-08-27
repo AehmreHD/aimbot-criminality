@@ -1534,6 +1534,8 @@ local function GetClosestTarget()
 
 	local function EvaluateTarget(target, character)
 		if not target or not character or not IsTargetTypeEnabled(target) then return end
+		if target == LocalPlayer or character == LocalPlayer.Character then return end
+		if Players:GetPlayerFromCharacter(character) == LocalPlayer then return end
 
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		local root = GetCharacterRoot(character)
@@ -1590,11 +1592,14 @@ end
 
 local function IsTargetValid(target)
 	if not target or not IsTargetTypeEnabled(target) then return false end
+	if target == LocalPlayer then return false end
 
 	local localCharacter = LocalPlayer.Character
 	local character = GetTargetCharacter(target)
 
 	if not localCharacter or not character then return false end
+	if character == localCharacter then return false end
+	if Players:GetPlayerFromCharacter(character) == LocalPlayer then return false end
 
 	local localRoot = GetCharacterRoot(localCharacter)
 	local root = GetCharacterRoot(character)
@@ -1696,6 +1701,11 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 			end
 
 			local TargetCharacter = GetTargetCharacter(Target)
+
+			if TargetCharacter == LocalPlayer.Character or Players:GetPlayerFromCharacter(TargetCharacter) == LocalPlayer then
+				Target = nil
+				TargetCharacter = nil
+			end
 
 			if Target and TargetCharacter then
 				local HitPart = GetTargetPart(TargetCharacter)
