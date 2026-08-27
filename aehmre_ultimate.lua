@@ -112,7 +112,7 @@ local Settings = {
 	MaxDistance = 1000,
 	AimKey = Enum.KeyCode.B,
 	ToggleUiKey = Enum.KeyCode.L,
-	FarmInvisToggleKey = Enum.KeyCode.X,
+	FarmInvisToggleKey = Enum.KeyCode.V,
 	MenuTransparency = 0,
 	BorderThickness = 1.5,
 	AccentColorIndex = 1
@@ -385,21 +385,61 @@ local Farm = (function()
 		local destination = GetFarmPositionInFront(targetPart, hrp.Position)
 		if not destination then return false end
 
-		FarmStatus = "Teleporting"
+		FarmStatus = "Pathfinding"
 
-		local finalPosition = destination + Vector3.new(0, 2.5, 0)
-		local lookAt = Vector3.new(targetPart.Position.X, finalPosition.Y, targetPart.Position.Z)
-
-		if (lookAt - finalPosition).Magnitude > 0.01 then
-			hrp.CFrame = CFrame.lookAt(finalPosition, lookAt)
-		else
-			hrp.CFrame = CFrame.new(finalPosition)
+		local waypoints = ComputeFarmPath(hrp.Position, destination)
+		if not waypoints then
+			FarmStatus = "Path failed"
+			return false
 		end
 
-		hrp.AssemblyLinearVelocity = Vector3.zero
-		hrp.AssemblyAngularVelocity = Vector3.zero
-		FarmStatus = "Idle"
+		for _, waypoint in ipairs(waypoints) do
+			if not Settings.FarmEnabled then
+				FarmStatus = "Idle"
+				return false
+			end
 
+			character, humanoid, hrp = GetFarmCharacter()
+			if not character or not humanoid or humanoid.Health <= 0 or not hrp then
+				FarmStatus = "Idle"
+				return false
+			end
+
+			if waypoint.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
+			end
+
+			humanoid:MoveTo(waypoint.Position)
+
+			local finished = false
+			local reached = false
+			local connection
+
+			connection = humanoid.MoveToFinished:Connect(function(didReach)
+				reached = didReach
+				finished = true
+			end)
+
+			local started = tick()
+
+			while not finished and tick() - started < 4 do
+				if not Settings.FarmEnabled or humanoid.Health <= 0 then
+					break
+				end
+				task.wait(0.05)
+			end
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			if not reached then
+				FarmStatus = "Path blocked"
+				return false
+			end
+		end
+
+		FarmStatus = "Idle"
 		return true
 	end
 
