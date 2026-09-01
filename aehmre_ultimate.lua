@@ -88,6 +88,7 @@ local Settings = {
 	ShowMarkedPlayerESP = false,
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
+	OffscreenWarning = true,
 	ShowFOV = true,
 	FOVPulse = true,
 	TargetIndicator = true,
@@ -1116,6 +1117,8 @@ local DebugTargetBlocked = false
 local AimFOVColor = Color3.fromRGB(0, 160, 255)
 local FOVPulseSpeed = 6
 local FOVSizePulseAmount = 8
+local AimTargetRefreshTimer = 0
+local AimTargetRefreshInterval = 0.08
 
 local TrackedNPCs = {}
 local MarkedESP = {
@@ -1126,9 +1129,19 @@ local MarkedESP = {
 	Color = Color3.fromRGB(255, 235, 45)
 }
 
+local OffscreenIndicators = {}
+local OffscreenOverlay = nil
+
+local function IsSelfCharacter(character)
+	if not character or not character:IsA("Model") then return false end
+	if character == LocalPlayer.Character then return true end
+	local owner = Players:GetPlayerFromCharacter(character)
+	return owner == LocalPlayer
+end
+
 local function IsNPCModel(model)
 	if not model or not model:IsA("Model") then return false end
-	if model == LocalPlayer.Character then return false end
+	if IsSelfCharacter(model) then return false end
 	if Players:GetPlayerFromCharacter(model) then return false end
 
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -1149,6 +1162,11 @@ local function WispAllESPRemnants()
 		elseif object:IsA("BillboardGui") and object.Name == "TestESP_Username" then
 			pcall(function() object:Destroy() end)
 		end
+	end
+
+	for player, indicator in pairs(OffscreenIndicators) do
+		if indicator then pcall(function() indicator:Destroy() end) end
+		OffscreenIndicators[player] = nil
 	end
 end
 
@@ -1382,9 +1400,14 @@ local function TryRegisterNPCFromInstance(instance)
 		model = instance:FindFirstAncestorOfClass("Model")
 	end
 
-	if model then
-		RegisterNPC(model)
+	if not model then return end
+
+	if IsSelfCharacter(model) or Players:GetPlayerFromCharacter(model) then
+		TrackedNPCs[model] = nil
+		return
 	end
+
+	RegisterNPC(model)
 end
 
 local function RefreshAllESP()
@@ -1393,10 +1416,10 @@ local function RefreshAllESP()
 	end
 
 	for model in pairs(TrackedNPCs) do
-		if model.Parent then
-			UpdateNPCESP(model)
-		else
+		if not model.Parent or IsSelfCharacter(model) or Players:GetPlayerFromCharacter(model) then
 			TrackedNPCs[model] = nil
+		else
+			UpdateNPCESP(model)
 		end
 	end
 end
@@ -1425,6 +1448,31 @@ SafeConnect(Players.PlayerRemoving, function(player)
 
 	if MarkedESP.DropdownRemove then
 		MarkedESP.DropdownRemove(player)
+	end
+
+	local indicator = OffscreenIndicators[player]
+	if indicator then
+		indicator:Destroy()
+		OffscreenIndicators[player] = nil
+	end
+end)
+
+SafeConnect(LocalPlayer.CharacterAdded, function(character)
+	Target = nil
+	LastLoggedTarget = nil
+	LastTargetHealth = 0
+	TrackedNPCs[character] = nil
+end)
+
+SafeConnect(LocalPlayer.CharacterRemoving, function(character)
+	Target = nil
+	TrackedNPCs[character] = nil
+end)
+
+SafeConnect(workspace:GetPropertyChangedSignal("CurrentCamera"), function()
+	if workspace.CurrentCamera then
+		Camera = workspace.CurrentCamera
+		Target = nil
 	end
 end)
 
@@ -1458,6 +1506,9 @@ local function UniversalDestruct()
 	pcall(function() FPSDisplay:Remove() end)
 	pcall(function() WallDebugLine:Remove() end)
 	pcall(function() TargetInfoText:Remove() end)
+	pcall(function()
+		if OffscreenOverlay then OffscreenOverlay:Destroy() end
+	end)
 	UpdateFullbright(false)
 	Farm.Cleanup()
 	WispAllESPRemnants()
@@ -1522,6 +1573,7 @@ local function IsTargetTypeEnabled(target)
 	end
 
 	if target:IsA("Model") then
+		if IsSelfCharacter(target) or Players:GetPlayerFromCharacter(target) then return false end
 		return Settings.DetectNPCs and IsNPCModel(target)
 	end
 
@@ -1574,8 +1626,9 @@ local function GetClosestTarget()
 
 	local function EvaluateTarget(target, character)
 		if not target or not character or not IsTargetTypeEnabled(target) then return end
-		if target == LocalPlayer or character == LocalPlayer.Character then return end
-		if Players:GetPlayerFromCharacter(character) == LocalPlayer then return end
+		if target == LocalPlayer or IsSelfCharacter(character) then return end
+		local owner = Players:GetPlayerFromCharacter(character)
+		if owner == LocalPlayer then return end
 
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		local root = GetCharacterRoot(character)
@@ -1619,10 +1672,10 @@ local function GetClosestTarget()
 
 	if Settings.DetectNPCs then
 		for model in pairs(TrackedNPCs) do
-			if model.Parent then
-				EvaluateTarget(model, model)
-			else
+			if not model.Parent or IsSelfCharacter(model) or Players:GetPlayerFromCharacter(model) then
 				TrackedNPCs[model] = nil
+			else
+				EvaluateTarget(model, model)
 			end
 		end
 	end
@@ -1638,8 +1691,9 @@ local function IsTargetValid(target)
 	local character = GetTargetCharacter(target)
 
 	if not localCharacter or not character then return false end
-	if character == localCharacter then return false end
-	if Players:GetPlayerFromCharacter(character) == LocalPlayer then return false end
+	if IsSelfCharacter(character) then return false end
+	local owner = Players:GetPlayerFromCharacter(character)
+	if owner == LocalPlayer then return false end
 
 	local localRoot = GetCharacterRoot(localCharacter)
 	local root = GetCharacterRoot(character)
@@ -1677,6 +1731,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		FPSUpdateTimer += deltaTime
 		DebugInfoTimer += deltaTime
 		DebugTargetRefreshTimer += deltaTime
+		AimTargetRefreshTimer += deltaTime
 
 		if Settings.WallCheckDebug and DebugTargetRefreshTimer >= 0.1 then
 			GetClosestTarget()
@@ -1719,8 +1774,9 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 		if AccessNoticeDismissed and Settings.Enabled and Aiming then
 			TargetBlocked = false
 
-			if not IsTargetValid(Target) then
+			if not IsTargetValid(Target) or AimTargetRefreshTimer >= AimTargetRefreshInterval then
 				Target = GetClosestTarget()
+				AimTargetRefreshTimer = 0
 			end
 
 			if Settings.WallCheckDebug and DebugTargetPart then
@@ -1742,7 +1798,7 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 
 			local TargetCharacter = GetTargetCharacter(Target)
 
-			if TargetCharacter == LocalPlayer.Character or Players:GetPlayerFromCharacter(TargetCharacter) == LocalPlayer then
+			if TargetCharacter and IsSelfCharacter(TargetCharacter) then
 				Target = nil
 				TargetCharacter = nil
 			end
@@ -2029,6 +2085,143 @@ ScreenGui.Name = CurrentScriptID
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999999
+
+OffscreenOverlay = Instance.new("Frame", ScreenGui)
+OffscreenOverlay.Name = "OffscreenWarningOverlay"
+OffscreenOverlay.Size = UDim2.new(1, 0, 1, 0)
+OffscreenOverlay.BackgroundTransparency = 1
+OffscreenOverlay.BorderSizePixel = 0
+OffscreenOverlay.Active = false
+OffscreenOverlay.ZIndex = 40
+
+local function GetOffscreenIndicator(player)
+	local existing = OffscreenIndicators[player]
+	if existing and existing.Parent then return existing end
+
+	local indicator = Instance.new("Frame")
+	indicator.Name = "Offscreen_" .. player.UserId
+	indicator.Size = UDim2.new(0, 58, 0, 58)
+	indicator.AnchorPoint = Vector2.new(0.5, 0.5)
+	indicator.BackgroundTransparency = 1
+	indicator.Visible = false
+	indicator.ZIndex = 41
+	indicator.Parent = OffscreenOverlay
+
+	local warning = Instance.new("TextLabel")
+	warning.Name = "WarningLogo"
+	warning.Size = UDim2.new(1, 0, 0, 38)
+	warning.BackgroundTransparency = 1
+	warning.Text = "⚠"
+	warning.Font = Enum.Font.GothamBold
+	warning.TextSize = 34
+	warning.TextColor3 = Color3.fromRGB(255, 210, 45)
+	warning.TextStrokeColor3 = Color3.fromRGB(120, 35, 0)
+	warning.TextStrokeTransparency = 0.15
+	warning.ZIndex = 42
+	warning.Parent = indicator
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "PlayerName"
+	nameLabel.Size = UDim2.new(1, 24, 0, 16)
+	nameLabel.Position = UDim2.new(0, -12, 1, -17)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = player.Name
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 10
+	nameLabel.TextColor3 = Color3.fromRGB(255, 245, 210)
+	nameLabel.TextStrokeTransparency = 0.25
+	nameLabel.ZIndex = 42
+	nameLabel.Parent = indicator
+
+	OffscreenIndicators[player] = indicator
+	return indicator
+end
+
+local function HideAllOffscreenIndicators()
+	for _, indicator in pairs(OffscreenIndicators) do
+		if indicator then indicator.Visible = false end
+	end
+end
+
+local function IsCharacterInsideCameraView(character, viewport)
+	local parts = {
+		character:FindFirstChild("Head"),
+		character:FindFirstChild("HumanoidRootPart"),
+		character:FindFirstChild("UpperTorso"),
+		character:FindFirstChild("Torso")
+	}
+
+	for _, part in ipairs(parts) do
+		if part and part:IsA("BasePart") then
+			local point, onScreen = Camera:WorldToViewportPoint(part.Position)
+			if onScreen and point.Z > 0
+				and point.X >= 0 and point.X <= viewport.X
+				and point.Y >= 0 and point.Y <= viewport.Y then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+local function UpdateOffscreenWarnings()
+	if not OffscreenOverlay or not AccessNoticeDismissed or not Settings.Enabled or not Settings.DetectPlayers or not Settings.OffscreenWarning then
+		HideAllOffscreenIndicators()
+		return
+	end
+
+	local viewport = Camera.ViewportSize
+	local center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
+	local margin = 42
+	local halfWidth = math.max(1, center.X - margin)
+	local halfHeight = math.max(1, center.Y - margin)
+	local seen = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and IsEnemy(player) then
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and GetCharacterRoot(character)
+
+			if character and not IsSelfCharacter(character) and humanoid and humanoid.Health > 0 and root then
+				local screenPos = Camera:WorldToViewportPoint(root.Position)
+				local visibleInCamera = IsCharacterInsideCameraView(character, viewport)
+
+				local indicator = GetOffscreenIndicator(player)
+				seen[player] = true
+
+				if visibleInCamera then
+					indicator.Visible = false
+				else
+					local direction = Vector2.new(screenPos.X - center.X, screenPos.Y - center.Y)
+
+					if screenPos.Z < 0 then direction = -direction end
+
+					if direction.Magnitude < 0.001 then
+						direction = Vector2.new(0, 1)
+					else
+						direction = direction.Unit
+					end
+
+					local scaleX = math.abs(direction.X) > 0.001 and halfWidth / math.abs(direction.X) or math.huge
+					local scaleY = math.abs(direction.Y) > 0.001 and halfHeight / math.abs(direction.Y) or math.huge
+					local edgeScale = math.min(scaleX, scaleY)
+					local edgePosition = center + direction * edgeScale
+
+					indicator.Position = UDim2.fromOffset(edgePosition.X, edgePosition.Y)
+					indicator.Visible = true
+				end
+			end
+		end
+	end
+
+	for player, indicator in pairs(OffscreenIndicators) do
+		if not seen[player] then indicator.Visible = false end
+	end
+end
+
+SafeConnect(RunService.RenderStepped, UpdateOffscreenWarnings)
 
 local MainFrame = Instance.new("Frame", ScreenGui)
 MainFrame.Name = "MainFrame"
@@ -3263,6 +3456,10 @@ AddDashboardButton(VisPage, "ShowMarkedPlayerESP", "Show Marked Player ESP", "Ma
 end)
 
 AddMarkedPlayerDropdown(VisPage)
+
+AddDashboardButton(VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Only appears when the player is outside your visible camera viewport.", function()
+	UpdateOffscreenWarnings()
+end)
 
 AddDashboardButton(VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
 AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
