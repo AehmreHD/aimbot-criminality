@@ -89,6 +89,7 @@ local Settings = {
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
 	OffscreenWarning = true,
+	WarningIMGSize = 58,
 	ShowFOV = true,
 	FOVPulse = true,
 	TargetIndicator = true,
@@ -101,6 +102,7 @@ local Settings = {
 	FarmEnabled = false,
 	FarmAutoMoney = false,
 	FarmInvisibility = false,
+	InvisibilityMode = "Air",
 	FarmInvisSpeed = 12,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
@@ -688,6 +690,13 @@ local Farm = (function()
 	local FarmInvisHumanoid = nil
 	local FarmInvisHrp = nil
 	local FarmInvisPossible = true
+	local FarmInvisActiveMode = nil
+	local FarmBottomDepth = 3.25
+	local FarmBottomLastGroundY = nil
+
+	local FarmBottomRaycastParams = RaycastParams.new()
+	FarmBottomRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	FarmBottomRaycastParams.IgnoreWater = true
 
 	local function UpdateFarmInvisCharacter()
 		FarmInvisCharacter = LocalPlayer.Character
@@ -754,13 +763,109 @@ local Farm = (function()
 		end
 	end
 
+	local function GetFarmBottomGroundY(position)
+		if not FarmInvisCharacter then return nil end
+
+		FarmBottomRaycastParams.FilterDescendantsInstances = {FarmInvisCharacter}
+
+		local origin = Vector3.new(position.X, position.Y + 10, position.Z)
+		local result = workspace:Raycast(origin, Vector3.new(0, -30, 0), FarmBottomRaycastParams)
+
+		if result then
+			return result.Position.Y
+		end
+
+		return nil
+	end
+
+	local function StartFarmBottomInvisibility()
+		FarmInvisActiveMode = "Bottom"
+		FarmInvisPossible = true
+		FarmBottomLastGroundY = nil
+
+		if FarmInvisAnimTrack then
+			pcall(function()
+				FarmInvisAnimTrack:Stop()
+			end)
+			FarmInvisAnimTrack = nil
+		end
+
+		if FarmInvisWarningLabel then
+			FarmInvisWarningLabel.Visible = false
+		end
+
+		Camera.CameraSubject = FarmInvisHumanoid
+
+		FarmInvisConnection = RunService.Heartbeat:Connect(function(dt)
+			if not Settings.FarmInvisibility or Settings.InvisibilityMode ~= "Bottom" then return end
+
+			local currentCharacter = LocalPlayer.Character
+
+			if currentCharacter ~= FarmInvisCharacter then
+				task.wait()
+				UpdateFarmInvisCharacter()
+				FarmBottomLastGroundY = nil
+			end
+
+			if not FarmInvisCharacter
+				or not FarmInvisHumanoid
+				or not FarmInvisHrp
+				or not FarmInvisHumanoid:IsDescendantOf(workspace)
+				or FarmInvisHumanoid.Health <= 0 then
+				return
+			end
+
+			local position = FarmInvisHrp.Position
+			local moveDirection = FarmInvisHumanoid.MoveDirection
+
+			if moveDirection.Magnitude > 0 then
+				position += moveDirection.Unit * Settings.FarmInvisSpeed * dt
+			end
+
+			local groundY = GetFarmBottomGroundY(position)
+			if groundY then
+				FarmBottomLastGroundY = groundY
+				position = Vector3.new(position.X, groundY - FarmBottomDepth, position.Z)
+			elseif FarmBottomLastGroundY then
+				position = Vector3.new(position.X, FarmBottomLastGroundY - FarmBottomDepth, position.Z)
+			end
+
+			local lookVec = Camera.CFrame.LookVector
+			local flatLook = Vector3.new(lookVec.X, 0, lookVec.Z)
+
+			if flatLook.Magnitude < 0.1 then
+				flatLook = Vector3.new(0, 0, -1)
+			else
+				flatLook = flatLook.Unit
+			end
+
+			FarmInvisHrp.CFrame = CFrame.new(position, position + flatLook)
+			FarmInvisHrp.AssemblyLinearVelocity = Vector3.zero
+			FarmInvisHrp.AssemblyAngularVelocity = Vector3.zero
+		end)
+
+		FarmLog("Invisibility enabled (Bottom)")
+	end
+
 	local function DisableFarmInvisibility()
+		local activeMode = FarmInvisActiveMode
 		Settings.FarmInvisibility = false
 
 		if FarmInvisConnection then
 			FarmInvisConnection:Disconnect()
 			FarmInvisConnection = nil
 		end
+
+		if activeMode == "Bottom" and FarmInvisHrp and FarmInvisHrp:IsDescendantOf(workspace) and FarmBottomLastGroundY then
+			local position = FarmInvisHrp.Position
+			local restorePosition = Vector3.new(position.X, FarmBottomLastGroundY + 3, position.Z)
+			FarmInvisHrp.CFrame = CFrame.new(restorePosition) * (FarmInvisHrp.CFrame - FarmInvisHrp.CFrame.Position)
+			FarmInvisHrp.AssemblyLinearVelocity = Vector3.zero
+			FarmInvisHrp.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		FarmBottomLastGroundY = nil
+		FarmInvisActiveMode = nil
 
 		if FarmInvisAnimTrack then
 			pcall(function()
@@ -802,6 +907,13 @@ local Farm = (function()
 			return
 		end
 
+		if Settings.InvisibilityMode == "Bottom" then
+			StartFarmBottomInvisibility()
+			return
+		end
+
+		FarmInvisActiveMode = "Air"
+
 		if not FarmInvisCharacter:FindFirstChild("Torso") or FarmInvisHumanoid.RigType ~= Enum.HumanoidRigType.R6 then
 			Settings.FarmInvisibility = false
 			FarmInvisPossible = false
@@ -823,7 +935,7 @@ local Farm = (function()
 		LoadFarmInvisAnimation()
 
 		FarmInvisConnection = RunService.Heartbeat:Connect(function(dt)
-			if not Settings.FarmInvisibility or not FarmInvisPossible then
+			if not Settings.FarmInvisibility or Settings.InvisibilityMode ~= "Air" or not FarmInvisPossible then
 				if FarmInvisWarningLabel then
 					FarmInvisWarningLabel.Visible = false
 				end
@@ -949,7 +1061,7 @@ local Farm = (function()
 			end
 		end)
 
-		FarmLog("Invisibility enabled")
+		FarmLog("Invisibility enabled (Air)")
 	end
 
 	local function ClearFarmSafeESP()
@@ -1130,7 +1242,16 @@ local MarkedESP = {
 }
 
 local OffscreenIndicators = {}
+local OffscreenThreatCache = {}
 local OffscreenOverlay = nil
+local OffscreenFarColor = Color3.fromRGB(255, 210, 45)
+local OffscreenNearColor = Color3.fromRGB(255, 45, 45)
+local OffscreenLookDotThreshold = 0.92
+local OffscreenThreatCheckInterval = 0.10
+
+local OffscreenLookRaycastParams = RaycastParams.new()
+OffscreenLookRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+OffscreenLookRaycastParams.IgnoreWater = true
 
 local function IsSelfCharacter(character)
 	if not character or not character:IsA("Model") then return false end
@@ -1167,6 +1288,7 @@ local function WispAllESPRemnants()
 	for player, indicator in pairs(OffscreenIndicators) do
 		if indicator then pcall(function() indicator:Destroy() end) end
 		OffscreenIndicators[player] = nil
+		OffscreenThreatCache[player] = nil
 	end
 end
 
@@ -1455,6 +1577,8 @@ SafeConnect(Players.PlayerRemoving, function(player)
 		indicator:Destroy()
 		OffscreenIndicators[player] = nil
 	end
+
+	OffscreenThreatCache[player] = nil
 end)
 
 SafeConnect(LocalPlayer.CharacterAdded, function(character)
@@ -2094,13 +2218,41 @@ OffscreenOverlay.BorderSizePixel = 0
 OffscreenOverlay.Active = false
 OffscreenOverlay.ZIndex = 40
 
+local function ApplyOffscreenIndicatorSize(indicator)
+	if not indicator then return end
+
+	local size = math.floor(Settings.WarningIMGSize + 0.5)
+	local warning = indicator:FindFirstChild("WarningLogo")
+	local nameLabel = indicator:FindFirstChild("PlayerName")
+
+	indicator.Size = UDim2.fromOffset(size, size)
+
+	if warning then
+		warning.Size = UDim2.new(1, 0, 0, math.floor(size * 0.68))
+		warning.TextSize = math.max(16, math.floor(size * 0.59))
+	end
+
+	if nameLabel then
+		nameLabel.Size = UDim2.new(1, 30, 0, 16)
+		nameLabel.Position = UDim2.new(0, -15, 1, -17)
+	end
+end
+
+local function UpdateOffscreenIndicatorSizes()
+	for _, indicator in pairs(OffscreenIndicators) do
+		ApplyOffscreenIndicatorSize(indicator)
+	end
+end
+
 local function GetOffscreenIndicator(player)
 	local existing = OffscreenIndicators[player]
-	if existing and existing.Parent then return existing end
+	if existing and existing.Parent then
+		ApplyOffscreenIndicatorSize(existing)
+		return existing
+	end
 
 	local indicator = Instance.new("Frame")
 	indicator.Name = "Offscreen_" .. player.UserId
-	indicator.Size = UDim2.new(0, 58, 0, 58)
 	indicator.AnchorPoint = Vector2.new(0.5, 0.5)
 	indicator.BackgroundTransparency = 1
 	indicator.Visible = false
@@ -2109,12 +2261,10 @@ local function GetOffscreenIndicator(player)
 
 	local warning = Instance.new("TextLabel")
 	warning.Name = "WarningLogo"
-	warning.Size = UDim2.new(1, 0, 0, 38)
 	warning.BackgroundTransparency = 1
 	warning.Text = "⚠"
 	warning.Font = Enum.Font.GothamBold
-	warning.TextSize = 34
-	warning.TextColor3 = Color3.fromRGB(255, 210, 45)
+	warning.TextColor3 = OffscreenFarColor
 	warning.TextStrokeColor3 = Color3.fromRGB(120, 35, 0)
 	warning.TextStrokeTransparency = 0.15
 	warning.ZIndex = 42
@@ -2122,8 +2272,6 @@ local function GetOffscreenIndicator(player)
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "PlayerName"
-	nameLabel.Size = UDim2.new(1, 24, 0, 16)
-	nameLabel.Position = UDim2.new(0, -12, 1, -17)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = player.Name
 	nameLabel.Font = Enum.Font.GothamBold
@@ -2132,6 +2280,8 @@ local function GetOffscreenIndicator(player)
 	nameLabel.TextStrokeTransparency = 0.25
 	nameLabel.ZIndex = 42
 	nameLabel.Parent = indicator
+
+	ApplyOffscreenIndicatorSize(indicator)
 
 	OffscreenIndicators[player] = indicator
 	return indicator
@@ -2143,26 +2293,47 @@ local function HideAllOffscreenIndicators()
 	end
 end
 
-local function IsCharacterInsideCameraView(character, viewport)
-	local parts = {
-		character:FindFirstChild("Head"),
-		character:FindFirstChild("HumanoidRootPart"),
-		character:FindFirstChild("UpperTorso"),
-		character:FindFirstChild("Torso")
-	}
+local function IsPlayerLookingAtLocal(player, character)
+	local localCharacter = LocalPlayer.Character
+	local localRoot = localCharacter and GetCharacterRoot(localCharacter)
+	local sourcePart = character and (character:FindFirstChild("Head") or GetCharacterRoot(character))
 
-	for _, part in ipairs(parts) do
-		if part and part:IsA("BasePart") then
-			local point, onScreen = Camera:WorldToViewportPoint(part.Position)
-			if onScreen and point.Z > 0
-				and point.X >= 0 and point.X <= viewport.X
-				and point.Y >= 0 and point.Y <= viewport.Y then
-				return true
-			end
-		end
+	if not localCharacter or not localRoot or not sourcePart then return false end
+
+	local toLocal = localRoot.Position - sourcePart.Position
+	if toLocal.Magnitude < 0.1 then return false end
+
+	local lookVector = sourcePart.CFrame.LookVector
+	local dot = lookVector:Dot(toLocal.Unit)
+	if dot < OffscreenLookDotThreshold then return false end
+
+	OffscreenLookRaycastParams.FilterDescendantsInstances = {character}
+
+	local result = workspace:Raycast(sourcePart.Position, toLocal, OffscreenLookRaycastParams)
+
+	if result and not result.Instance:IsDescendantOf(localCharacter) then
+		return false
 	end
 
-	return false
+	return true
+end
+
+local function GetOffscreenThreatState(player, character)
+	local cached = OffscreenThreatCache[player]
+	local now = time()
+
+	if cached and now - cached.Time < OffscreenThreatCheckInterval then
+		return cached.Threat
+	end
+
+	local threat = IsPlayerLookingAtLocal(player, character)
+
+	OffscreenThreatCache[player] = {
+		Time = now,
+		Threat = threat
+	}
+
+	return threat
 end
 
 local function UpdateOffscreenWarnings()
@@ -2171,9 +2342,17 @@ local function UpdateOffscreenWarnings()
 		return
 	end
 
+	local localCharacter = LocalPlayer.Character
+	local localRoot = localCharacter and GetCharacterRoot(localCharacter)
+
+	if not localRoot then
+		HideAllOffscreenIndicators()
+		return
+	end
+
 	local viewport = Camera.ViewportSize
 	local center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-	local margin = 42
+	local margin = math.max(30, Settings.WarningIMGSize * 0.65)
 	local halfWidth = math.max(1, center.X - margin)
 	local halfHeight = math.max(1, center.Y - margin)
 	local seen = {}
@@ -2185,10 +2364,14 @@ local function UpdateOffscreenWarnings()
 			local root = character and GetCharacterRoot(character)
 
 			if character and not IsSelfCharacter(character) and humanoid and humanoid.Health > 0 and root then
-				local screenPos = Camera:WorldToViewportPoint(root.Position)
-				local visibleInCamera = IsCharacterInsideCameraView(character, viewport)
+				local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+				local visibleInCamera = onScreen and screenPos.Z > 0
+					and screenPos.X >= 0 and screenPos.X <= viewport.X
+					and screenPos.Y >= 0 and screenPos.Y <= viewport.Y
 
 				local indicator = GetOffscreenIndicator(player)
+				local warning = indicator:FindFirstChild("WarningLogo")
+				local nameLabel = indicator:FindFirstChild("PlayerName")
 				seen[player] = true
 
 				if visibleInCamera then
@@ -2208,19 +2391,39 @@ local function UpdateOffscreenWarnings()
 					local scaleY = math.abs(direction.Y) > 0.001 and halfHeight / math.abs(direction.Y) or math.huge
 					local edgeScale = math.min(scaleX, scaleY)
 					local edgePosition = center + direction * edgeScale
+					local distance = (root.Position - localRoot.Position).Magnitude
+					local closeFactor = 1 - math.clamp(distance / math.max(Settings.MaxDistance, 1), 0, 1)
+					local warningColor = OffscreenFarColor:Lerp(OffscreenNearColor, closeFactor)
+					local isThreat = GetOffscreenThreatState(player, character)
+					local blinkVisible = not isThreat or math.floor(time() / 0.16) % 2 == 0
 
 					indicator.Position = UDim2.fromOffset(edgePosition.X, edgePosition.Y)
-					indicator.Visible = true
+					indicator.Visible = blinkVisible
+
+					if warning then
+						warning.TextColor3 = warningColor
+						warning.TextStrokeColor3 = Color3.fromRGB(
+							math.floor(80 + 80 * closeFactor),
+							math.floor(28 - 12 * closeFactor),
+							math.floor(12 - 6 * closeFactor)
+						)
+					end
+
+					if nameLabel then
+						nameLabel.TextColor3 = warningColor:Lerp(Color3.new(1, 1, 1), 0.35)
+					end
 				end
 			end
 		end
 	end
 
 	for player, indicator in pairs(OffscreenIndicators) do
-		if not seen[player] then indicator.Visible = false end
+		if not seen[player] then
+			indicator.Visible = false
+			OffscreenThreatCache[player] = nil
+		end
 	end
 end
-
 SafeConnect(RunService.RenderStepped, UpdateOffscreenWarnings)
 
 local MainFrame = Instance.new("Frame", ScreenGui)
@@ -2969,7 +3172,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	end)
 end
 
-local function AddDashboardDropdown(parentPage, configKey, displayTitle, options, desc)
+local function AddDashboardDropdown(parentPage, configKey, displayTitle, options, desc, customCallback)
 	local Card = Instance.new("Frame", parentPage)
 	Card.Size = UDim2.new(0.94, 0, 0, 56)
 	Card.BackgroundColor3 = Styles.CardBg
@@ -3062,6 +3265,10 @@ local function AddDashboardDropdown(parentPage, configKey, displayTitle, options
 			Settings[configKey] = option
 			Target = nil
 			SetOpen(false)
+
+			if customCallback then
+				customCallback(option)
+			end
 		end)
 	end
 
@@ -3457,9 +3664,14 @@ end)
 
 AddMarkedPlayerDropdown(VisPage)
 
-AddDashboardButton(VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Only appears when the player is outside your visible camera viewport.", function()
+AddDashboardButton(VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
 	UpdateOffscreenWarnings()
 end)
+
+AddDashboardSlider(VisPage, "WarningIMGSize", "Warning IMG Size", 24, 100, "Controls the size of the off-screen warning logo.", "Default size: 58.", function(value)
+	Settings.WarningIMGSize = math.floor(value + 0.5)
+	UpdateOffscreenIndicatorSizes()
+end, 0)
 
 AddDashboardButton(VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
 AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
@@ -3487,7 +3699,15 @@ AddDashboardButton(FarmPage, "FarmAutoMoney", "Auto Money", "Automatically picks
 	if enabled then Farm.StartAutoMoney() else Farm.StopAutoMoney() end
 end)
 
-AddDashboardButton(FarmPage, "FarmInvisibility", "Invisibility (R6)", "Enables the R6 invisibility mode from the farm hub.", "Only runs while enabled and caches character parts.", function(enabled)
+AddDashboardDropdown(FarmPage, "InvisibilityMode", "Invisibility Mode", {"Air", "Bottom"}, "Air = current R6 animation mode. Bottom = keeps the HumanoidRootPart below the floor.", function()
+	if Settings.FarmInvisibility then
+		Farm.DisableInvisibility()
+		Settings.FarmInvisibility = true
+		Farm.EnableInvisibility()
+	end
+end)
+
+AddDashboardButton(FarmPage, "FarmInvisibility", "Invisibility", "Enables the selected invisibility mode.", "Air requires R6. Bottom uses the HumanoidRootPart and no invis animation.", function(enabled)
 	if enabled then Farm.EnableInvisibility() else Farm.DisableInvisibility() end
 end)
 
