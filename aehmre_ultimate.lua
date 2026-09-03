@@ -86,6 +86,8 @@ local Settings = {
 	AutoShoot = true,
 	ESPEnabled = true,
 	ShowMarkedPlayerESP = false,
+	KillMarkedWithFireAxe = false,
+	FireAxeTeleportDelay = 0.5,
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
 	OffscreenWarning = true,
@@ -1753,6 +1755,127 @@ local function ControlClick(press)
 		if mouse1release then mouse1release()
 		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then LocalPlayer.Character:FindFirstChildOfClass("Tool"):Deactivate() end
 	end
+end
+
+local KillMarkedFireAxeRunning = false
+
+local function UpdateKillMarkedFireAxeUI()
+	Settings.KillMarkedWithFireAxe = false
+
+	if ConfigUIUpdaters.KillMarkedWithFireAxe then
+		ConfigUIUpdaters.KillMarkedWithFireAxe()
+	end
+end
+
+local function GetFireAxe()
+	local character = LocalPlayer.Character
+	local backpack = LocalPlayer:FindFirstChild("Backpack")
+
+	local equipped = character and character:FindFirstChild("Fire Axe")
+	if equipped and equipped:IsA("Tool") then return equipped end
+
+	local stored = backpack and backpack:FindFirstChild("Fire Axe")
+	if stored and stored:IsA("Tool") then return stored end
+
+	return nil
+end
+
+local function KillMarkedPlayerWithFireAxe()
+	if KillMarkedFireAxeRunning then
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	KillMarkedFireAxeRunning = true
+
+	local targetPlayer = MarkedESP.SelectedPlayer
+
+	if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
+		SystemLogEvent("Fire Axe action cancelled: no marked player selected.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local localRoot = character and GetCharacterRoot(character)
+
+	local targetCharacter = targetPlayer.Character
+	local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+	local targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
+
+	if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
+		SystemLogEvent("Fire Axe action cancelled: local character unavailable.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+		SystemLogEvent("Fire Axe action cancelled: marked player unavailable.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	local axe = GetFireAxe()
+
+	if not axe then
+		SystemLogEvent("Fire Axe action cancelled: Fire Axe not found.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	if axe.Parent ~= character then
+		pcall(function()
+			humanoid:EquipTool(axe)
+		end)
+		task.wait(0.15)
+	end
+
+	axe = character:FindFirstChild("Fire Axe") or axe
+
+	if not axe or axe.Parent ~= character then
+		SystemLogEvent("Fire Axe action cancelled: Fire Axe could not be equipped.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	ControlClick(true)
+
+	local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
+	task.wait(delayTime)
+
+	character = LocalPlayer.Character
+	humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	localRoot = character and GetCharacterRoot(character)
+
+	targetCharacter = targetPlayer.Character
+	targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+	targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
+
+	if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+		ControlClick(false)
+		SystemLogEvent("Fire Axe action cancelled during delay: character or target unavailable.")
+		KillMarkedFireAxeRunning = false
+		UpdateKillMarkedFireAxeUI()
+		return
+	end
+
+	localRoot.CFrame = targetRoot.CFrame
+	localRoot.AssemblyLinearVelocity = Vector3.zero
+	localRoot.AssemblyAngularVelocity = Vector3.zero
+
+	task.wait(0.08)
+	ControlClick(false)
+
+	SystemLogEvent(string.format("Fire Axe action used on marked player: %s (delay %.1fs)", targetPlayer.Name, delayTime))
+
+	KillMarkedFireAxeRunning = false
+	UpdateKillMarkedFireAxeUI()
 end
 
 local function GetExploitSimHitRemote()
@@ -3841,6 +3964,16 @@ AddDashboardButton(VisPage, "ShowMarkedPlayerESP", "Show Marked Player ESP", "Ma
 end)
 
 AddMarkedPlayerDropdown(VisPage)
+
+AddDashboardButton(VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Fire Axe", "Equips Fire Axe, starts the click/ability, waits, then teleports to the marked player's HumanoidRootPart.", "Requires a marked player. Runs once, then switches OFF.", function(enabled)
+	if enabled then
+		task.spawn(KillMarkedPlayerWithFireAxe)
+	end
+end)
+
+AddDashboardSlider(VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after the click starts before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
+	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
+end, 1)
 
 AddDashboardButton(VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
 	UpdateOffscreenWarnings()
