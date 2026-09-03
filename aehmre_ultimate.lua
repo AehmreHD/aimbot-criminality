@@ -1,14 +1,24 @@
--- // JJSPLOIT BASIC TEST //
+-- // AEHMRE ULTIMATE HUB - JJSPLOIT REGISTER REFACTOR //
 -- MADE BY: Emre_31er
-
-print("[TEST] Lua running")
-
-print("[HubRecovery] SCRIPT STARTED")
 local Lighting = game:GetService("Lighting")
 
 --// Cross-Script Hot-Reload State Transfer Engine
 local CurrentScriptID = "Aehmre_AimHub_v1"
-local env = (getgenv and getgenv()) or shared
+local env = nil
+
+pcall(function()
+	if typeof(getgenv) == "function" then
+		env = getgenv()
+	end
+end)
+
+if typeof(env) ~= "table" then
+	if typeof(shared) == "table" then
+		env = shared
+	else
+		env = _G
+	end
+end
 local SavedState = nil
 
 local DiscordInvite = "https://discord.gg/hjjrsKJ8AA"
@@ -78,6 +88,37 @@ local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local IsTouchDevice = UserInputService.TouchEnabled
 local HasKeyboard = UserInputService.KeyboardEnabled
+
+local UI = {}
+
+UI.BootGui = Instance.new("ScreenGui")
+UI.BootGui.Name = "AehmreHubBoot"
+UI.BootGui.ResetOnSpawn = false
+UI.BootGui.DisplayOrder = 1000000
+UI.BootGui.Parent = PlayerGui
+
+UI.BootLabel = Instance.new("TextLabel")
+UI.BootLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+UI.BootLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+UI.BootLabel.Size = UDim2.new(0, 300, 0, 48)
+UI.BootLabel.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+UI.BootLabel.BackgroundTransparency = 0.12
+UI.BootLabel.BorderSizePixel = 0
+UI.BootLabel.Font = Enum.Font.GothamBold
+UI.BootLabel.TextSize = 13
+UI.BootLabel.TextColor3 = Color3.fromRGB(245, 245, 248)
+UI.BootLabel.Text = "Aehmre Ultimate Hub\nLoading core..."
+UI.BootLabel.Parent = UI.BootGui
+Instance.new("UICorner", UI.BootLabel).CornerRadius = UDim.new(0, 8)
+
+local function SetBootStatus(message)
+\tif UI.BootLabel and UI.BootLabel.Parent then
+\t\tUI.BootLabel.Text = "Aehmre Ultimate Hub\n" .. tostring(message)
+\tend
+\tprint("[HubBoot] " .. tostring(message))
+end
+
+SetBootStatus("Loading systems...")
 
 local Compat = {
 	Executor = "Unknown",
@@ -348,6 +389,8 @@ local function TweenObj(obj, goal, duration, style, dir)
 	tween:Play()
 	return tween
 end
+
+SetBootStatus("Loading Remote Spy...")
 
 local RemoteSpy = (function()
 	local State = {
@@ -676,6 +719,8 @@ env.AehmreRemoteSpy = RemoteSpy
 
 
 Compat.Log("BOOT", "Initializing Farm system")
+
+SetBootStatus("Loading Farm...")
 
 local Farm = (function()
 	local FarmMoveSpeed = 22
@@ -1168,7 +1213,7 @@ local Farm = (function()
 	local function EnsureFarmInvisWarning()
 		if FarmInvisWarningGui and FarmInvisWarningGui.Parent then return end
 
-		FarmInvisWarningGui = Instance.new("ScreenGui")
+		FarmInvisWarningGui = Instance.new("UI.ScreenGui")
 		FarmInvisWarningGui.Name = "AehmreInvisWarningGUI"
 		FarmInvisWarningGui.ResetOnSpawn = false
 		FarmInvisWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -1375,7 +1420,7 @@ local Farm = (function()
 
 			pcall(function()
 				game:GetService("StarterGui"):SetCore("SendNotification", {
-					Title = "Invisibility unavailable",
+					UI.Title = "Invisibility unavailable",
 					Text = "R6 avatar required",
 					Duration = 5
 				})
@@ -1764,6 +1809,8 @@ local Farm = (function()
 end)()
 
 Compat.Log("BOOT", "Farm system initialized")
+
+SetBootStatus("Loading Aim / ESP...")
 
 --// Drawing Vector FOV Crosshair & Target Indicator Framework
 local FOVIdleColor = Color3.fromRGB(220, 35, 45)
@@ -2930,15 +2977,15 @@ end)
 Compat.Log("BOOT", "Aim/ESP runtime initialized")
 
 --// UI Allocation Elements
-local MainMenuUI = nil
-local ShortcutList = nil
-local KeybindCapture = nil
-local KeybindValueButtons = {}
-local MobileControls = nil
-local MobileAimButton = nil
-local MobileMenuButton = nil
-local MainUIScale = nil
-local AuthUIScale = nil
+UI.MainMenuUI = nil
+UI.ShortcutList = nil
+UI.KeybindCapture = nil
+UI.KeybindValueButtons = {}
+UI.MobileControls = nil
+UI.MobileAimButton = nil
+UI.MobileMenuButton = nil
+UI.MainUIScale = nil
+UI.AuthUIScale = nil
 
 local function GetKeybindName(keyCode)
 	if not keyCode or keyCode == Enum.KeyCode.Unknown then
@@ -2949,7 +2996,7 @@ local function GetKeybindName(keyCode)
 end
 
 local function UpdateKeybindValueButtons()
-	for configKey, button in pairs(KeybindValueButtons) do
+	for configKey, button in pairs(UI.KeybindValueButtons) do
 		if button then
 			if IsTouchDevice and not HasKeyboard then
 				button.Text = "PC ONLY"
@@ -2961,26 +3008,26 @@ local function UpdateKeybindValueButtons()
 end
 
 local function UpdateMobileControlButtons()
-	if MobileAimButton then
-		MobileAimButton.Text = Aiming and "AIM\nON" or "AIM\nOFF"
-		MobileAimButton.BackgroundColor3 = Aiming and Styles.Accent or Color3.fromRGB(30, 32, 40)
-		MobileAimButton.TextColor3 = Aiming and Color3.fromRGB(10, 10, 12) or Styles.TextMain
+	if UI.MobileAimButton then
+		UI.MobileAimButton.Text = Aiming and "AIM\nON" or "AIM\nOFF"
+		UI.MobileAimButton.BackgroundColor3 = Aiming and Styles.Accent or Color3.fromRGB(30, 32, 40)
+		UI.MobileAimButton.TextColor3 = Aiming and Color3.fromRGB(10, 10, 12) or Styles.TextMain
 	end
 
-	if MobileMenuButton then
-		MobileMenuButton.Text = MainMenuUI and MainMenuUI.Visible and "HIDE\nUI" or "SHOW\nUI"
+	if UI.MobileMenuButton then
+		UI.MobileMenuButton.Text = UI.MainMenuUI and UI.MainMenuUI.Visible and "HIDE\nUI" or "SHOW\nUI"
 	end
 end
 
 UpdateLeftPanelShortcuts = function()
-	if ShortcutList then
+	if UI.ShortcutList then
 		local statusText = Aiming and "ON" or "OFF"
 
 		if IsTouchDevice then
-			ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
+			UI.ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
 		else
 			local invisStatus = Settings.FarmInvisibility and "ON" or "OFF"
-			ShortcutList.Text = string.format(
+			UI.ShortcutList.Text = string.format(
 				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s",
 				GetKeybindName(Settings.AimKey),
 				statusText,
@@ -3007,24 +3054,24 @@ local function ToggleAiming()
 end
 
 local function ToggleMainMenu()
-	if not AccessNoticeDismissed or not MainMenuUI then return end
+	if not AccessNoticeDismissed or not UI.MainMenuUI then return end
 
 	if IsTouchDevice then
-		MainMenuUI.Visible = not MainMenuUI.Visible
+		UI.MainMenuUI.Visible = not UI.MainMenuUI.Visible
 		UpdateMobileControlButtons()
 		return
 	end
 
-	local isVis = MainMenuUI.Size.Y.Offset > 40
-	local container = MainMenuUI:FindFirstChild("WindowContainerFrame")
+	local isVis = UI.MainMenuUI.Size.Y.Offset > 40
+	local container = UI.MainMenuUI:FindFirstChild("UI.WindowContainerFrame")
 
 	if container then
 		if isVis then
-			TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
+			TweenObj(UI.MainMenuUI, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
 			container.Visible = false
 		else
 			container.Visible = true
-			TweenObj(MainMenuUI, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
+			TweenObj(UI.MainMenuUI, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
 		end
 	end
 end
@@ -3051,13 +3098,13 @@ local function HookButtonAnimations(btn, baseColor, hoverColor)
 end
 
 SafeConnect(UserInputService.InputBegan, function(input, processed)
-	if KeybindCapture then
+	if UI.KeybindCapture then
 		if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode == Enum.KeyCode.Unknown then
 			return
 		end
 
-		local capture = KeybindCapture
-		KeybindCapture = nil
+		local capture = UI.KeybindCapture
+		UI.KeybindCapture = nil
 
 		if input.KeyCode == Enum.KeyCode.Escape then
 			UpdateKeybindValueButtons()
@@ -3112,14 +3159,16 @@ end)
 
 Compat.Log("BOOT", "Input/runtime controls initialized")
 
---// Structural Premium Interface Generation Layer
-local ScreenGui = Instance.new("ScreenGui", PlayerGui)
-ScreenGui.Name = CurrentScriptID
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999999
+SetBootStatus("Building main UI...")
 
-OffscreenOverlay = Instance.new("Frame", ScreenGui)
+--// Structural Premium Interface Generation Layer
+UI.ScreenGui = Instance.new("UI.ScreenGui", PlayerGui)
+UI.ScreenGui.Name = CurrentScriptID
+UI.ScreenGui.ResetOnSpawn = false
+UI.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+UI.ScreenGui.DisplayOrder = 999999
+
+OffscreenOverlay = Instance.new("Frame", UI.ScreenGui)
 OffscreenOverlay.Name = "OffscreenWarningOverlay"
 OffscreenOverlay.Size = UDim2.new(1, 0, 1, 0)
 OffscreenOverlay.BackgroundTransparency = 1
@@ -3335,122 +3384,122 @@ local function UpdateOffscreenWarnings()
 end
 SafeConnect(RunService.RenderStepped, UpdateOffscreenWarnings)
 
-local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Name = "MainFrame"
-MainFrame.BackgroundColor3 = Styles.Bg
-MainFrame.BackgroundTransparency = Settings.MenuTransparency
-MainFrame.BorderSizePixel = 0
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.Size = UDim2.new(0, 540, 0, 415)
-MainFrame.Active = true
-MainFrame.ClipsDescendants = true
-MainFrame.Visible = false
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
-MainMenuUI = MainFrame
+UI.MainFrame = Instance.new("Frame", UI.ScreenGui)
+UI.MainFrame.Name = "UI.MainFrame"
+UI.MainFrame.BackgroundColor3 = Styles.Bg
+UI.MainFrame.BackgroundTransparency = Settings.MenuTransparency
+UI.MainFrame.BorderSizePixel = 0
+UI.MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+UI.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+UI.MainFrame.Size = UDim2.new(0, 540, 0, 415)
+UI.MainFrame.Active = true
+UI.MainFrame.ClipsDescendants = true
+UI.MainFrame.Visible = false
+Instance.new("UICorner", UI.MainFrame).CornerRadius = UDim.new(0, 10)
+UI.MainMenuUI = UI.MainFrame
 
-MainUIScale = Instance.new("UIScale", MainFrame)
+UI.MainUIScale = Instance.new("UIScale", UI.MainFrame)
 
-MobileControls = Instance.new("Frame", ScreenGui)
-MobileControls.Name = "MobileControls"
-MobileControls.Size = UDim2.new(0, 64, 0, 146)
-MobileControls.Position = UDim2.new(1, -76, 0.5, -73)
-MobileControls.BackgroundTransparency = 1
-MobileControls.Visible = false
-MobileControls.ZIndex = 50
-MobileControls.Active = true
+UI.MobileControls = Instance.new("Frame", UI.ScreenGui)
+UI.MobileControls.Name = "UI.MobileControls"
+UI.MobileControls.Size = UDim2.new(0, 64, 0, 146)
+UI.MobileControls.Position = UDim2.new(1, -76, 0.5, -73)
+UI.MobileControls.BackgroundTransparency = 1
+UI.MobileControls.Visible = false
+UI.MobileControls.ZIndex = 50
+UI.MobileControls.Active = true
 
-local MobileDragHandle = Instance.new("TextButton", MobileControls)
-MobileDragHandle.Size = UDim2.new(0, 60, 0, 18)
-MobileDragHandle.Position = UDim2.new(0, 2, 0, 0)
-MobileDragHandle.BackgroundColor3 = Color3.fromRGB(20, 21, 27)
-MobileDragHandle.BorderSizePixel = 0
-MobileDragHandle.Text = "≡"
-MobileDragHandle.TextColor3 = Styles.TextDark
-MobileDragHandle.TextSize = 14
-MobileDragHandle.Font = Enum.Font.GothamBold
-MobileDragHandle.AutoButtonColor = false
-MobileDragHandle.ZIndex = 51
-Instance.new("UICorner", MobileDragHandle).CornerRadius = UDim.new(0, 7)
+UI.MobileDragHandle = Instance.new("TextButton", UI.MobileControls)
+UI.MobileDragHandle.Size = UDim2.new(0, 60, 0, 18)
+UI.MobileDragHandle.Position = UDim2.new(0, 2, 0, 0)
+UI.MobileDragHandle.BackgroundColor3 = Color3.fromRGB(20, 21, 27)
+UI.MobileDragHandle.BorderSizePixel = 0
+UI.MobileDragHandle.Text = "≡"
+UI.MobileDragHandle.TextColor3 = Styles.TextDark
+UI.MobileDragHandle.TextSize = 14
+UI.MobileDragHandle.Font = Enum.Font.GothamBold
+UI.MobileDragHandle.AutoButtonColor = false
+UI.MobileDragHandle.ZIndex = 51
+Instance.new("UICorner", UI.MobileDragHandle).CornerRadius = UDim.new(0, 7)
 
-MobileAimButton = Instance.new("TextButton", MobileControls)
-MobileAimButton.Size = UDim2.new(0, 60, 0, 56)
-MobileAimButton.Position = UDim2.new(0, 2, 0, 24)
-MobileAimButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
-MobileAimButton.BorderSizePixel = 0
-MobileAimButton.Text = "AIM\nOFF"
-MobileAimButton.TextColor3 = Styles.TextMain
-MobileAimButton.TextSize = 11
-MobileAimButton.Font = Enum.Font.GothamBold
-MobileAimButton.AutoButtonColor = false
-MobileAimButton.ZIndex = 51
-Instance.new("UICorner", MobileAimButton).CornerRadius = UDim.new(0, 10)
+UI.MobileAimButton = Instance.new("TextButton", UI.MobileControls)
+UI.MobileAimButton.Size = UDim2.new(0, 60, 0, 56)
+UI.MobileAimButton.Position = UDim2.new(0, 2, 0, 24)
+UI.MobileAimButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+UI.MobileAimButton.BorderSizePixel = 0
+UI.MobileAimButton.Text = "AIM\nOFF"
+UI.MobileAimButton.TextColor3 = Styles.TextMain
+UI.MobileAimButton.TextSize = 11
+UI.MobileAimButton.Font = Enum.Font.GothamBold
+UI.MobileAimButton.AutoButtonColor = false
+UI.MobileAimButton.ZIndex = 51
+Instance.new("UICorner", UI.MobileAimButton).CornerRadius = UDim.new(0, 10)
 
-local MobileAimStroke = Instance.new("UIStroke", MobileAimButton)
-ApplyPaletteStroke(MobileAimStroke, 1)
-MobileAimStroke.Thickness = 1.5
+UI.MobileAimStroke = Instance.new("UIStroke", UI.MobileAimButton)
+ApplyPaletteStroke(UI.MobileAimStroke, 1)
+UI.MobileAimStroke.Thickness = 1.5
 
-MobileMenuButton = Instance.new("TextButton", MobileControls)
-MobileMenuButton.Size = UDim2.new(0, 60, 0, 56)
-MobileMenuButton.Position = UDim2.new(0, 2, 0, 90)
-MobileMenuButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
-MobileMenuButton.BorderSizePixel = 0
-MobileMenuButton.Text = "SHOW\nUI"
-MobileMenuButton.TextColor3 = Styles.TextMain
-MobileMenuButton.TextSize = 10
-MobileMenuButton.Font = Enum.Font.GothamBold
-MobileMenuButton.AutoButtonColor = false
-MobileMenuButton.ZIndex = 51
-Instance.new("UICorner", MobileMenuButton).CornerRadius = UDim.new(0, 10)
+UI.MobileMenuButton = Instance.new("TextButton", UI.MobileControls)
+UI.MobileMenuButton.Size = UDim2.new(0, 60, 0, 56)
+UI.MobileMenuButton.Position = UDim2.new(0, 2, 0, 90)
+UI.MobileMenuButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+UI.MobileMenuButton.BorderSizePixel = 0
+UI.MobileMenuButton.Text = "SHOW\nUI"
+UI.MobileMenuButton.TextColor3 = Styles.TextMain
+UI.MobileMenuButton.TextSize = 10
+UI.MobileMenuButton.Font = Enum.Font.GothamBold
+UI.MobileMenuButton.AutoButtonColor = false
+UI.MobileMenuButton.ZIndex = 51
+Instance.new("UICorner", UI.MobileMenuButton).CornerRadius = UDim.new(0, 10)
 
-local MobileMenuStroke = Instance.new("UIStroke", MobileMenuButton)
-ApplyPaletteStroke(MobileMenuStroke, 3)
-MobileMenuStroke.Thickness = 1.5
+UI.MobileMenuStroke = Instance.new("UIStroke", UI.MobileMenuButton)
+ApplyPaletteStroke(UI.MobileMenuStroke, 3)
+UI.MobileMenuStroke.Thickness = 1.5
 
-HookButtonAnimations(MobileAimButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
-HookButtonAnimations(MobileMenuButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
+HookButtonAnimations(UI.MobileAimButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
+HookButtonAnimations(UI.MobileMenuButton, Color3.fromRGB(30, 32, 40), Styles.CardHover)
 
-MobileAimButton.Activated:Connect(function()
+UI.MobileAimButton.Activated:Connect(function()
 	ToggleAiming()
 end)
 
-MobileMenuButton.Activated:Connect(function()
+UI.MobileMenuButton.Activated:Connect(function()
 	ToggleMainMenu()
 end)
 
-local MobileDragState = {
+UI.MobileDragState = {
 	Dragging = false,
 	Input = nil,
 	Start = nil,
 	StartPosition = nil
 }
 
-MobileDragHandle.InputBegan:Connect(function(input)
+UI.MobileDragHandle.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		MobileDragState.Dragging = true
-		MobileDragState.Start = input.Position
-		MobileDragState.StartPosition = MobileControls.Position
+		UI.MobileDragState.Dragging = true
+		UI.MobileDragState.Start = input.Position
+		UI.MobileDragState.StartPosition = UI.MobileControls.Position
 
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				MobileDragState.Dragging = false
+				UI.MobileDragState.Dragging = false
 			end
 		end)
 	end
 end)
 
-MobileDragHandle.InputChanged:Connect(function(input)
+UI.MobileDragHandle.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-		MobileDragState.Input = input
+		UI.MobileDragState.Input = input
 	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == MobileDragState.Input and MobileDragState.Dragging then
-		local delta = input.Position - MobileDragState.Start
-		local startPosition = MobileDragState.StartPosition
+	if input == UI.MobileDragState.Input and UI.MobileDragState.Dragging then
+		local delta = input.Position - UI.MobileDragState.Start
+		local startPosition = UI.MobileDragState.StartPosition
 
-		MobileControls.Position = UDim2.new(
+		UI.MobileControls.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
@@ -3459,53 +3508,53 @@ SafeConnect(UserInputService.InputChanged, function(input)
 	end
 end)
 
-local MainStroke = Instance.new("UIStroke", MainFrame)
-MainStroke.Thickness = Settings.BorderThickness
-ApplyPaletteStroke(MainStroke, 1)
-MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UI.MainStroke = Instance.new("UIStroke", UI.MainFrame)
+UI.MainStroke.Thickness = Settings.BorderThickness
+ApplyPaletteStroke(UI.MainStroke, 1)
+UI.MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-local HeaderBar = Instance.new("Frame", MainFrame)
-HeaderBar.Name = "HeaderBar"
-HeaderBar.Size = UDim2.new(1, 0, 0, 40)
-HeaderBar.BackgroundColor3 = Styles.SidebarBg
-HeaderBar.BackgroundTransparency = Settings.MenuTransparency
-HeaderBar.BorderSizePixel = 0
+UI.HeaderBar = Instance.new("Frame", UI.MainFrame)
+UI.HeaderBar.Name = "UI.HeaderBar"
+UI.HeaderBar.Size = UDim2.new(1, 0, 0, 40)
+UI.HeaderBar.BackgroundColor3 = Styles.SidebarBg
+UI.HeaderBar.BackgroundTransparency = Settings.MenuTransparency
+UI.HeaderBar.BorderSizePixel = 0
 
-local MainDragState = {
+UI.MainDragState = {
 	Dragging = false,
 	Input = nil,
 	Start = nil,
 	StartPosition = nil,
-	TargetPosition = MainFrame.Position
+	TargetPosition = UI.MainFrame.Position
 }
 
-HeaderBar.InputBegan:Connect(function(input)
+UI.HeaderBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		MainDragState.Dragging = true
-		MainDragState.Start = input.Position
-		MainDragState.StartPosition = MainFrame.Position
-		MainDragState.TargetPosition = MainDragState.StartPosition
+		UI.MainDragState.Dragging = true
+		UI.MainDragState.Start = input.Position
+		UI.MainDragState.StartPosition = UI.MainFrame.Position
+		UI.MainDragState.TargetPosition = UI.MainDragState.StartPosition
 
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				MainDragState.Dragging = false
+				UI.MainDragState.Dragging = false
 			end
 		end)
 	end
 end)
 
-HeaderBar.InputChanged:Connect(function(input)
+UI.HeaderBar.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		MainDragState.Input = input
+		UI.MainDragState.Input = input
 	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == MainDragState.Input and MainDragState.Dragging then
-		local delta = input.Position - MainDragState.Start
-		local startPosition = MainDragState.StartPosition
+	if input == UI.MainDragState.Input and UI.MainDragState.Dragging then
+		local delta = input.Position - UI.MainDragState.Start
+		local startPosition = UI.MainDragState.StartPosition
 
-		MainDragState.TargetPosition = UDim2.new(
+		UI.MainDragState.TargetPosition = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
@@ -3515,191 +3564,191 @@ SafeConnect(UserInputService.InputChanged, function(input)
 end)
 
 SafeConnect(RunService.RenderStepped, function(dt)
-	local targetPosition = MainDragState.TargetPosition
-	if MainFrame.Position ~= targetPosition then
-		MainFrame.Position = MainFrame.Position:Lerp(targetPosition, math.clamp(dt * 12, 0, 1))
+	local targetPosition = UI.MainDragState.TargetPosition
+	if UI.MainFrame.Position ~= targetPosition then
+		UI.MainFrame.Position = UI.MainFrame.Position:Lerp(targetPosition, math.clamp(dt * 12, 0, 1))
 	end
 end)
 
-local Title = Instance.new("TextLabel", HeaderBar)
-Title.Size = UDim2.new(0.3, 0, 1, 0)
-Title.Position = UDim2.new(0.03, 0, 0, 0)
-Title.BackgroundTransparency = 1
-Title.TextColor3 = Styles.TextMain
-Title.Text = "Aehmre Ultimate Hub"
-Title.TextSize = 13
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
+UI.Title = Instance.new("TextLabel", UI.HeaderBar)
+UI.Title.Size = UDim2.new(0.3, 0, 1, 0)
+UI.Title.Position = UDim2.new(0.03, 0, 0, 0)
+UI.Title.BackgroundTransparency = 1
+UI.Title.TextColor3 = Styles.TextMain
+UI.Title.Text = "Aehmre Ultimate Hub"
+UI.Title.TextSize = 13
+UI.Title.Font = Enum.Font.GothamBold
+UI.Title.TextXAlignment = Enum.TextXAlignment.Left
 
-local SubTitle = Instance.new("TextLabel", HeaderBar)
-SubTitle.Name = "CreatorTag"
-SubTitle.Size = UDim2.new(0.4, 0, 1, 0)
-SubTitle.Position = UDim2.new(0.32, 0, 0, 0) 
-SubTitle.BackgroundTransparency = 1
-SubTitle.TextColor3 = Styles.Accent
-SubTitle.Text = "Made by @Emre_31er"
-SubTitle.TextSize = 11
-SubTitle.Font = Enum.Font.Arimo
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+UI.SubTitle = Instance.new("TextLabel", UI.HeaderBar)
+UI.SubTitle.Name = "CreatorTag"
+UI.SubTitle.Size = UDim2.new(0.4, 0, 1, 0)
+UI.SubTitle.Position = UDim2.new(0.32, 0, 0, 0) 
+UI.SubTitle.BackgroundTransparency = 1
+UI.SubTitle.TextColor3 = Styles.Accent
+UI.SubTitle.Text = "Made by @Emre_31er"
+UI.SubTitle.TextSize = 11
+UI.SubTitle.Font = Enum.Font.Arimo
+UI.SubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local HeaderControlSize = IsTouchDevice and 30 or 20
 local HeaderControlHalf = HeaderControlSize * 0.5
 
-local CloseBtn = Instance.new("TextButton", HeaderBar)
-CloseBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
-CloseBtn.Position = UDim2.new(1, -(IsTouchDevice and 36 or 26), 0.5, -HeaderControlHalf)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 25)
-CloseBtn.TextColor3 = Color3.fromRGB(240, 90, 90)
-CloseBtn.Text = "X" 
-CloseBtn.TextSize = 11
-CloseBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 5)
-HookButtonAnimations(CloseBtn, Color3.fromRGB(40, 20, 25), Color3.fromRGB(60, 25, 32))
+UI.CloseBtn = Instance.new("TextButton", UI.HeaderBar)
+UI.CloseBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
+UI.CloseBtn.Position = UDim2.new(1, -(IsTouchDevice and 36 or 26), 0.5, -HeaderControlHalf)
+UI.CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 25)
+UI.CloseBtn.TextColor3 = Color3.fromRGB(240, 90, 90)
+UI.CloseBtn.Text = "X" 
+UI.CloseBtn.TextSize = 11
+UI.CloseBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", UI.CloseBtn).CornerRadius = UDim.new(0, 5)
+HookButtonAnimations(UI.CloseBtn, Color3.fromRGB(40, 20, 25), Color3.fromRGB(60, 25, 32))
 
-local MinimizeBtn = Instance.new("TextButton", HeaderBar)
-MinimizeBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
-MinimizeBtn.Position = UDim2.new(1, -(IsTouchDevice and 72 or 52), 0.5, -HeaderControlHalf)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
-MinimizeBtn.TextColor3 = Styles.TextDark
-MinimizeBtn.Text = "—"
-MinimizeBtn.TextSize = 9
-MinimizeBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 5)
-HookButtonAnimations(MinimizeBtn, Color3.fromRGB(30, 32, 40), Color3.fromRGB(42, 45, 56))
+UI.MinimizeBtn = Instance.new("TextButton", UI.HeaderBar)
+UI.MinimizeBtn.Size = UDim2.new(0, HeaderControlSize, 0, HeaderControlSize)
+UI.MinimizeBtn.Position = UDim2.new(1, -(IsTouchDevice and 72 or 52), 0.5, -HeaderControlHalf)
+UI.MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+UI.MinimizeBtn.TextColor3 = Styles.TextDark
+UI.MinimizeBtn.Text = "—"
+UI.MinimizeBtn.TextSize = 9
+UI.MinimizeBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", UI.MinimizeBtn).CornerRadius = UDim.new(0, 5)
+HookButtonAnimations(UI.MinimizeBtn, Color3.fromRGB(30, 32, 40), Color3.fromRGB(42, 45, 56))
 
-local WindowContainerFrame = Instance.new("Frame", MainFrame)
-WindowContainerFrame.Name = "WindowContainerFrame"
-WindowContainerFrame.Size = UDim2.new(1, 0, 1, -40)
-WindowContainerFrame.Position = UDim2.new(0, 0, 0, 40)
-WindowContainerFrame.BackgroundTransparency = 1
+UI.WindowContainerFrame = Instance.new("Frame", UI.MainFrame)
+UI.WindowContainerFrame.Name = "UI.WindowContainerFrame"
+UI.WindowContainerFrame.Size = UDim2.new(1, 0, 1, -40)
+UI.WindowContainerFrame.Position = UDim2.new(0, 0, 0, 40)
+UI.WindowContainerFrame.BackgroundTransparency = 1
 
-local Sidebar = Instance.new("Frame", WindowContainerFrame)
-Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 165, 1, 0)
-Sidebar.BackgroundColor3 = Styles.SidebarBg
-Sidebar.BackgroundTransparency = Settings.MenuTransparency
-Sidebar.BorderSizePixel = 0
+UI.Sidebar = Instance.new("Frame", UI.WindowContainerFrame)
+UI.Sidebar.Name = "UI.Sidebar"
+UI.Sidebar.Size = UDim2.new(0, 165, 1, 0)
+UI.Sidebar.BackgroundColor3 = Styles.SidebarBg
+UI.Sidebar.BackgroundTransparency = Settings.MenuTransparency
+UI.Sidebar.BorderSizePixel = 0
 
-local SidebarContainer = Instance.new("ScrollingFrame", Sidebar)
-SidebarContainer.Size = UDim2.new(1, 0, 1, -170)
-SidebarContainer.Position = UDim2.new(0, 0, 0, 60)
-SidebarContainer.BackgroundTransparency = 1
-SidebarContainer.BorderSizePixel = 0
-SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-SidebarContainer.ScrollBarThickness = 2
-SidebarContainer.ScrollBarImageColor3 = Styles.Accent
-SidebarContainer.ScrollingDirection = Enum.ScrollingDirection.Y
-SidebarContainer.ClipsDescendants = true
+UI.SidebarContainer = Instance.new("ScrollingFrame", UI.Sidebar)
+UI.SidebarContainer.Size = UDim2.new(1, 0, 1, -170)
+UI.SidebarContainer.Position = UDim2.new(0, 0, 0, 60)
+UI.SidebarContainer.BackgroundTransparency = 1
+UI.SidebarContainer.BorderSizePixel = 0
+UI.SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+UI.SidebarContainer.ScrollBarThickness = 2
+UI.SidebarContainer.ScrollBarImageColor3 = Styles.Accent
+UI.SidebarContainer.ScrollingDirection = Enum.ScrollingDirection.Y
+UI.SidebarContainer.ClipsDescendants = true
 
-local ProfileContainer = Instance.new("Frame", Sidebar)
-ProfileContainer.Size = UDim2.new(1, 0, 0, 60)
-ProfileContainer.BackgroundTransparency = 1
+UI.ProfileContainer = Instance.new("Frame", UI.Sidebar)
+UI.ProfileContainer.Size = UDim2.new(1, 0, 0, 60)
+UI.ProfileContainer.BackgroundTransparency = 1
 
-local DummyAvatar = Instance.new("ImageLabel", ProfileContainer)
-DummyAvatar.Size = UDim2.new(0, 34, 0, 34)
-DummyAvatar.Position = UDim2.new(0.08, 0, 0.5, -17)
-DummyAvatar.BackgroundColor3 = Color3.fromRGB(35, 36, 45)
-DummyAvatar.BorderSizePixel = 0
-DummyAvatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
-Instance.new("UICorner", DummyAvatar).CornerRadius = UDim.new(1, 0)
+UI.DummyAvatar = Instance.new("ImageLabel", UI.ProfileContainer)
+UI.DummyAvatar.Size = UDim2.new(0, 34, 0, 34)
+UI.DummyAvatar.Position = UDim2.new(0.08, 0, 0.5, -17)
+UI.DummyAvatar.BackgroundColor3 = Color3.fromRGB(35, 36, 45)
+UI.DummyAvatar.BorderSizePixel = 0
+UI.DummyAvatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+Instance.new("UICorner", UI.DummyAvatar).CornerRadius = UDim.new(1, 0)
 
-local DevName = Instance.new("TextLabel", ProfileContainer)
-DevName.Size = UDim2.new(0.65, 0, 0, 16)
-DevName.Position = UDim2.new(0.34, 0, 0.28, 0)
-DevName.BackgroundTransparency = 1
-DevName.Text = LocalPlayer.DisplayName
-DevName.Font = Enum.Font.GothamSemibold
-DevName.TextSize = 11
-DevName.TextColor3 = Styles.TextDark
-DevName.TextXAlignment = Enum.TextXAlignment.Left
-DevName.TextTruncate = Enum.TextTruncate.AtEnd
+UI.DevName = Instance.new("TextLabel", UI.ProfileContainer)
+UI.DevName.Size = UDim2.new(0.65, 0, 0, 16)
+UI.DevName.Position = UDim2.new(0.34, 0, 0.28, 0)
+UI.DevName.BackgroundTransparency = 1
+UI.DevName.Text = LocalPlayer.DisplayName
+UI.DevName.Font = Enum.Font.GothamSemibold
+UI.DevName.TextSize = 11
+UI.DevName.TextColor3 = Styles.TextDark
+UI.DevName.TextXAlignment = Enum.TextXAlignment.Left
+UI.DevName.TextTruncate = Enum.TextTruncate.AtEnd
 
-local ActiveDotLabel = Instance.new("TextLabel", ProfileContainer)
-ActiveDotLabel.Size = UDim2.new(0.65, 0, 0, 14)
-ActiveDotLabel.Position = UDim2.new(0.34, 0, 0.52, 0)
-ActiveDotLabel.BackgroundTransparency = 1
-ActiveDotLabel.Text = "* Active"
-ActiveDotLabel.Font = Enum.Font.GothamBold
-ActiveDotLabel.TextSize = 10
-ActiveDotLabel.TextColor3 = Color3.fromRGB(70, 235, 120)
-ActiveDotLabel.TextXAlignment = Enum.TextXAlignment.Left
+UI.ActiveDotLabel = Instance.new("TextLabel", UI.ProfileContainer)
+UI.ActiveDotLabel.Size = UDim2.new(0.65, 0, 0, 14)
+UI.ActiveDotLabel.Position = UDim2.new(0.34, 0, 0.52, 0)
+UI.ActiveDotLabel.BackgroundTransparency = 1
+UI.ActiveDotLabel.Text = "* Active"
+UI.ActiveDotLabel.Font = Enum.Font.GothamBold
+UI.ActiveDotLabel.TextSize = 10
+UI.ActiveDotLabel.TextColor3 = Color3.fromRGB(70, 235, 120)
+UI.ActiveDotLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-local SideLayout = Instance.new("UIListLayout", SidebarContainer)
-SideLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SideLayout.Padding = UDim.new(0, 6)
-SideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UI.SideLayout = Instance.new("UIListLayout", UI.SidebarContainer)
+UI.SideLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UI.SideLayout.Padding = UDim.new(0, 6)
+UI.SideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-SideLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, SideLayout.AbsoluteContentSize.Y + 12)
+UI.SideLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	UI.SidebarContainer.CanvasSize = UDim2.new(0, 0, 0, UI.SideLayout.AbsoluteContentSize.Y + 12)
 end)
 
-local RightContentWindow = Instance.new("Frame", WindowContainerFrame)
-RightContentWindow.Name = "RightContentWindow"
-RightContentWindow.Size = UDim2.new(1, -165, 1, 0)
-RightContentWindow.Position = UDim2.new(0, 165, 0, 0)
-RightContentWindow.BackgroundTransparency = 1
+UI.RightContentWindow = Instance.new("Frame", UI.WindowContainerFrame)
+UI.RightContentWindow.Name = "UI.RightContentWindow"
+UI.RightContentWindow.Size = UDim2.new(1, -165, 1, 0)
+UI.RightContentWindow.Position = UDim2.new(0, 165, 0, 0)
+UI.RightContentWindow.BackgroundTransparency = 1
 
-local ShortcutsFrame = Instance.new("Frame", Sidebar)
-ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 50)
-ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -95)
-ShortcutsFrame.BackgroundTransparency = 1
+UI.ShortcutsFrame = Instance.new("Frame", UI.Sidebar)
+UI.ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 50)
+UI.ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -95)
+UI.ShortcutsFrame.BackgroundTransparency = 1
 
-local ShortcutTitle = Instance.new("TextLabel", ShortcutsFrame)
-ShortcutTitle.Size = UDim2.new(1, 0, 0, 14)
-ShortcutTitle.BackgroundTransparency = 1
-ShortcutTitle.Text = "SHORTCUTS"
-ShortcutTitle.Font = Enum.Font.GothamBold
-ShortcutTitle.TextSize = 10
-ShortcutTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-ShortcutTitle.TextXAlignment = Enum.TextXAlignment.Left
+UI.ShortcutTitle = Instance.new("TextLabel", UI.ShortcutsFrame)
+UI.ShortcutTitle.Size = UDim2.new(1, 0, 0, 14)
+UI.ShortcutTitle.BackgroundTransparency = 1
+UI.ShortcutTitle.Text = "SHORTCUTS"
+UI.ShortcutTitle.Font = Enum.Font.GothamBold
+UI.ShortcutTitle.TextSize = 10
+UI.ShortcutTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+UI.ShortcutTitle.TextXAlignment = Enum.TextXAlignment.Left
 
-ShortcutList = Instance.new("TextLabel", ShortcutsFrame)
-ShortcutList.Size = UDim2.new(1, 0, 1, -14)
-ShortcutList.Position = UDim2.new(0, 0, 0, 14)
-ShortcutList.BackgroundTransparency = 1
-ShortcutList.Font = Enum.Font.GothamSemibold
-ShortcutList.TextSize = 10
-ShortcutList.TextColor3 = Styles.TextDark
-ShortcutList.TextXAlignment = Enum.TextXAlignment.Left
+UI.ShortcutList = Instance.new("TextLabel", UI.ShortcutsFrame)
+UI.ShortcutList.Size = UDim2.new(1, 0, 1, -14)
+UI.ShortcutList.Position = UDim2.new(0, 0, 0, 14)
+UI.ShortcutList.BackgroundTransparency = 1
+UI.ShortcutList.Font = Enum.Font.GothamSemibold
+UI.ShortcutList.TextSize = 10
+UI.ShortcutList.TextColor3 = Styles.TextDark
+UI.ShortcutList.TextXAlignment = Enum.TextXAlignment.Left
 UpdateLeftPanelShortcuts()
 
-local SystemStatusBtn = Instance.new("TextButton", Sidebar)
-SystemStatusBtn.Size = UDim2.new(0.84, 0, 0, 32)
-SystemStatusBtn.Position = UDim2.new(0.08, 0, 1, -38)
-SystemStatusBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-SystemStatusBtn.Font = Enum.Font.GothamBold
-SystemStatusBtn.Text = "SYSTEM WORKING"
-SystemStatusBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-SystemStatusBtn.TextSize = 10
-SystemStatusBtn.BorderSizePixel = 0
-SystemStatusBtn.AutoButtonColor = false
-Instance.new("UICorner", SystemStatusBtn).CornerRadius = UDim.new(0, 6)
-HookButtonAnimations(SystemStatusBtn, Color3.fromRGB(255, 255, 255), Color3.fromRGB(225, 225, 230))
+UI.SystemStatusBtn = Instance.new("TextButton", UI.Sidebar)
+UI.SystemStatusBtn.Size = UDim2.new(0.84, 0, 0, 32)
+UI.SystemStatusBtn.Position = UDim2.new(0.08, 0, 1, -38)
+UI.SystemStatusBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+UI.SystemStatusBtn.Font = Enum.Font.GothamBold
+UI.SystemStatusBtn.Text = "SYSTEM WORKING"
+UI.SystemStatusBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+UI.SystemStatusBtn.TextSize = 10
+UI.SystemStatusBtn.BorderSizePixel = 0
+UI.SystemStatusBtn.AutoButtonColor = false
+Instance.new("UICorner", UI.SystemStatusBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(UI.SystemStatusBtn, Color3.fromRGB(255, 255, 255), Color3.fromRGB(225, 225, 230))
 
-local SearchBarFrame = Instance.new("Frame", RightContentWindow)
-SearchBarFrame.Size = UDim2.new(0.94, 0, 0, 30)
-SearchBarFrame.Position = UDim2.new(0.03, 0, 0, 10)
-SearchBarFrame.BackgroundColor3 = Color3.fromRGB(22, 23, 29)
-SearchBarFrame.BorderSizePixel = 0
-Instance.new("UICorner", SearchBarFrame).CornerRadius = UDim.new(0, 6)
-local SearchStroke = Instance.new("UIStroke", SearchBarFrame)
-ApplyPaletteStroke(SearchStroke, 2)
+UI.SearchBarFrame = Instance.new("Frame", UI.RightContentWindow)
+UI.SearchBarFrame.Size = UDim2.new(0.94, 0, 0, 30)
+UI.SearchBarFrame.Position = UDim2.new(0.03, 0, 0, 10)
+UI.SearchBarFrame.BackgroundColor3 = Color3.fromRGB(22, 23, 29)
+UI.SearchBarFrame.BorderSizePixel = 0
+Instance.new("UICorner", UI.SearchBarFrame).CornerRadius = UDim.new(0, 6)
+UI.SearchStroke = Instance.new("UIStroke", UI.SearchBarFrame)
+ApplyPaletteStroke(UI.SearchStroke, 2)
 
-local SearchPlaceholder = Instance.new("TextBox", SearchBarFrame)
-SearchPlaceholder.Size = UDim2.new(0.95, 0, 1, 0)
-SearchPlaceholder.Position = UDim2.new(0.03, 0, 0, 0)
-SearchPlaceholder.BackgroundTransparency = 1
-SearchPlaceholder.Text = ""
-SearchPlaceholder.PlaceholderText = "Search features..."
-SearchPlaceholder.PlaceholderColor3 = Color3.fromRGB(70, 72, 85)
-SearchPlaceholder.Font = Enum.Font.Gotham
-SearchPlaceholder.TextSize = 11
-SearchPlaceholder.TextColor3 = Styles.TextMain
-SearchPlaceholder.TextXAlignment = Enum.TextXAlignment.Left
+UI.SearchPlaceholder = Instance.new("TextBox", UI.SearchBarFrame)
+UI.SearchPlaceholder.Size = UDim2.new(0.95, 0, 1, 0)
+UI.SearchPlaceholder.Position = UDim2.new(0.03, 0, 0, 0)
+UI.SearchPlaceholder.BackgroundTransparency = 1
+UI.SearchPlaceholder.Text = ""
+UI.SearchPlaceholder.PlaceholderText = "Search features..."
+UI.SearchPlaceholder.PlaceholderColor3 = Color3.fromRGB(70, 72, 85)
+UI.SearchPlaceholder.Font = Enum.Font.Gotham
+UI.SearchPlaceholder.TextSize = 11
+UI.SearchPlaceholder.TextColor3 = Styles.TextMain
+UI.SearchPlaceholder.TextXAlignment = Enum.TextXAlignment.Left
 
-local Tabs = {}
+UI.Tabs = {}
 local function RegisterTabContainerPage(tabName)
-	local PageFrame = Instance.new("ScrollingFrame", RightContentWindow)
+	local PageFrame = Instance.new("ScrollingFrame", UI.RightContentWindow)
 	PageFrame.Name = tabName .. "_Page"
 	PageFrame.Size = UDim2.new(1, 0, 1, -55)
 	PageFrame.Position = UDim2.new(0, 0, 0, 55)
@@ -3722,7 +3771,7 @@ local function RegisterTabContainerPage(tabName)
 		PageFrame.CanvasSize = UDim2.new(0, 0, 0, PLayout.AbsoluteContentSize.Y + 25)
 	end)
 
-	local TabBtn = Instance.new("TextButton", SidebarContainer)
+	local TabBtn = Instance.new("TextButton", UI.SidebarContainer)
 	TabBtn.Size = UDim2.new(1, 0, 0, 32)
 	TabBtn.BackgroundColor3 = Color3.fromRGB(0,0,0)
 	TabBtn.BackgroundTransparency = 1
@@ -3745,7 +3794,7 @@ local function RegisterTabContainerPage(tabName)
 	TabBtn.MouseLeave:Connect(function() if not PageFrame.Visible then TweenObj(TabBtn, { TextColor3 = Styles.TextDark }, 0.2) end end)
 
 	TabBtn.MouseButton1Click:Connect(function()
-		for _, tData in pairs(Tabs) do
+		for _, tData in pairs(UI.Tabs) do
 			if tData.Page.Visible then tData.Page.Visible = false end
 			TweenObj(tData.Btn, { TextColor3 = Styles.TextDark }, 0.25)
 			tData.Btn.BackgroundTransparency = 1
@@ -3761,30 +3810,30 @@ local function RegisterTabContainerPage(tabName)
 		IndicatorStrip.Visible = true
 	end)
 
-	Tabs[tabName] = {Page = PageFrame, Btn = TabBtn}
+	UI.Tabs[tabName] = {Page = PageFrame, Btn = TabBtn}
 	return PageFrame
 end
 
-local AimPage = RegisterTabContainerPage("Aim Lock")
-local VisPage = RegisterTabContainerPage("Visuals / ESP")
-local LogPage = RegisterTabContainerPage("System Logs")
-local CustPage = RegisterTabContainerPage("Customization")
-local KeybindPage = RegisterTabContainerPage("Keybinds")
-local TestPage = RegisterTabContainerPage("Lighting & Enviroment")
-local FarmPage = RegisterTabContainerPage("Farm")
-local SettPage = RegisterTabContainerPage("Settings")
+UI.AimPage = RegisterTabContainerPage("Aim Lock")
+UI.VisPage = RegisterTabContainerPage("Visuals / ESP")
+UI.LogPage = RegisterTabContainerPage("System Logs")
+UI.CustPage = RegisterTabContainerPage("Customization")
+UI.KeybindPage = RegisterTabContainerPage("Keybinds")
+UI.TestPage = RegisterTabContainerPage("Lighting & Enviroment")
+UI.FarmPage = RegisterTabContainerPage("Farm")
+UI.SettPage = RegisterTabContainerPage("Settings")
 
-local SystemLogEntries = {}
+UI.SystemLogEntries = {}
 
 -- NEW: Logger Write Hook Function
 SystemLogEvent = function(msg)
 	local timeStr = os.date("%H:%M:%S")
-	local LogCard = Instance.new("Frame", LogPage)
+	local LogCard = Instance.new("Frame", UI.LogPage)
 
-	table.insert(SystemLogEntries, LogCard)
+	table.insert(UI.SystemLogEntries, LogCard)
 
-	if #SystemLogEntries > 100 then
-		local oldest = table.remove(SystemLogEntries, 1)
+	if #UI.SystemLogEntries > 100 then
+		local oldest = table.remove(UI.SystemLogEntries, 1)
 		if oldest then
 			oldest:Destroy()
 		end
@@ -3807,9 +3856,9 @@ SystemLogEvent = function(msg)
 	LogText.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- Auto-scroll trick layout logic
-	local container = LogPage:FindFirstChild("UIListLayout")
+	local container = UI.LogPage:FindFirstChild("UIListLayout")
 	if container then
-		LogPage.CanvasPosition = Vector2.new(0, container.AbsoluteContentSize.Y + 100)
+		UI.LogPage.CanvasPosition = Vector2.new(0, container.AbsoluteContentSize.Y + 100)
 	end
 end
 SystemLogEvent("Engine Core Initialized Successfully.")
@@ -3819,35 +3868,35 @@ if Settings.PanicMode then
 	Farm.EnablePanicMode()
 end
 
-Tabs["Aim Lock"].Page.Visible = true
-Tabs["Aim Lock"].Btn.TextColor3 = Styles.TextMain
-Tabs["Aim Lock"].Btn.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
-Tabs["Aim Lock"].Btn.BackgroundTransparency = 0
-Tabs["Aim Lock"].Btn.IndicatorStrip.Visible = true
+UI.Tabs["Aim Lock"].Page.Visible = true
+UI.Tabs["Aim Lock"].Btn.TextColor3 = Styles.TextMain
+UI.Tabs["Aim Lock"].Btn.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
+UI.Tabs["Aim Lock"].Btn.BackgroundTransparency = 0
+UI.Tabs["Aim Lock"].Btn.IndicatorStrip.Visible = true
 
-local IsMin = false
-MinimizeBtn.MouseButton1Click:Connect(function()
-	IsMin = not IsMin
-	local container = WindowContainerFrame
+UI.IsMin = false
+UI.MinimizeBtn.MouseButton1Click:Connect(function()
+	UI.IsMin = not UI.IsMin
+	local container = UI.WindowContainerFrame
 
-	if IsMin then
-		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
+	if UI.IsMin then
+		TweenObj(UI.MainFrame, { Size = UDim2.new(0, 540, 0, 40) }, 0.4, Enum.EasingStyle.Quint)
 		container.Visible = false
-		MinimizeBtn.Text = "+"
+		UI.MinimizeBtn.Text = "+"
 	else
 		container.Visible = true
-		TweenObj(MainFrame, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
-		MinimizeBtn.Text = "—"
+		TweenObj(UI.MainFrame, { Size = UDim2.new(0, 540, 0, 415) }, 0.4, Enum.EasingStyle.Quint)
+		UI.MinimizeBtn.Text = "—"
 	end
 
 	UpdateMobileControlButtons()
 end)
 
 local function CinematicClose()
-	TweenObj(MainStroke, { Transparency = 1 }, 0.15)
-	local closeTween = TweenObj(MainFrame, { 
+	TweenObj(UI.MainStroke, { Transparency = 1 }, 0.15)
+	local closeTween = TweenObj(UI.MainFrame, { 
 		Size = UDim2.new(0, 540, 0, 0), 
-		Position = MainFrame.Position + UDim2.new(0, 0, 0, 207.5), 
+		Position = UI.MainFrame.Position + UDim2.new(0, 0, 0, 207.5), 
 		BackgroundTransparency = 1 
 	}, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 	closeTween.Completed:Wait()
@@ -3855,7 +3904,7 @@ local function CinematicClose()
 	env[CurrentScriptID .. "_DataPacket"] = nil 
 	UniversalDestruct()
 end
-CloseBtn.MouseButton1Click:Connect(CinematicClose)
+UI.CloseBtn.MouseButton1Click:Connect(CinematicClose)
 
 Compat.Log("BOOT", "Main UI structure initialized")
 
@@ -4278,7 +4327,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	local ValueStroke = Instance.new("UIStroke", ValueButton)
 	ApplyPaletteStroke(ValueStroke)
 
-	KeybindValueButtons[configKey] = ValueButton
+	UI.KeybindValueButtons[configKey] = ValueButton
 
 	Card.MouseEnter:Connect(function()
 		TweenObj(Stroke, { Color = Styles.Accent }, 0.2)
@@ -4295,7 +4344,7 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	end)
 
 	ValueButton.MouseLeave:Connect(function()
-		if not KeybindCapture or KeybindCapture.ConfigKey ~= configKey then
+		if not UI.KeybindCapture or UI.KeybindCapture.ConfigKey ~= configKey then
 			TweenObj(ValueStroke, { Color = GetPaletteStrokeColor(ValueStroke) }, 0.15)
 		end
 	end)
@@ -4306,11 +4355,11 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 			return
 		end
 
-		if KeybindCapture then
+		if UI.KeybindCapture then
 			UpdateKeybindValueButtons()
 		end
 
-		KeybindCapture = {
+		UI.KeybindCapture = {
 			ConfigKey = configKey,
 			DisplayName = displayTitle
 		}
@@ -4320,8 +4369,8 @@ local function AddKeybindControl(parentPage, configKey, displayTitle, desc)
 	end)
 
 	table.insert(UIUpdaters, function()
-		if KeybindCapture and KeybindCapture.ConfigKey == configKey then
-			KeybindCapture = nil
+		if UI.KeybindCapture and UI.KeybindCapture.ConfigKey == configKey then
+			UI.KeybindCapture = nil
 		end
 
 		if IsTouchDevice and not HasKeyboard then
@@ -4570,87 +4619,87 @@ local function AddMarkedPlayerDropdown(parentPage)
 end
 
 --// Map Interface Elements Across Target Tab Frames
-AddDashboardButton(AimPage, "Enabled", "System Master Processing", "★ Optimal Placement: Core Hub Active On Screen", "Enables global calculation thread loops across physics steps.")
-AddDashboardButton(AimPage, "DetectPlayers", "Detect Players", "Target Detection: Roblox Players", "Allows Aim Lock and ESP to detect player characters.", function()
+AddDashboardButton(UI.AimPage, "Enabled", "System Master Processing", "★ Optimal Placement: Core Hub Active On Screen", "Enables global calculation thread loops across physics steps.")
+AddDashboardButton(UI.AimPage, "DetectPlayers", "Detect Players", "Target Detection: Roblox Players", "Allows Aim Lock and ESP to detect player characters.", function()
 	Target = nil
 	RefreshAllESP()
 end)
-AddDashboardButton(AimPage, "DetectNPCs", "Detect NPCs", "Target Detection: NPC Humanoids", "Allows Aim Lock and ESP to detect NPC models with a Humanoid.", function()
+AddDashboardButton(UI.AimPage, "DetectNPCs", "Detect NPCs", "Target Detection: NPC Humanoids", "Allows Aim Lock and ESP to detect NPC models with a Humanoid.", function()
 	Target = nil
 	RefreshAllESP()
 end)
-AddDashboardButton(AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
-AddDashboardButton(AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
-AddDashboardDropdown(AimPage, "TargetPart", "Target Part", {"Head", "HumanoidRootPart", "Torso"}, "Select the body part used for target locking.")
+AddDashboardButton(UI.AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
+AddDashboardButton(UI.AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
+AddDashboardDropdown(UI.AimPage, "TargetPart", "Target Part", {"Head", "HumanoidRootPart", "Torso"}, "Select the body part used for target locking.")
 
-AddDashboardButton(AimPage, "ShowESPUsername", "Show ESP Username", "Shows each detected player's username above their ESP highlight.", "Uses the player's real Roblox username.", function()
+AddDashboardButton(UI.AimPage, "ShowESPUsername", "Show ESP Username", "Shows each detected player's username above their ESP highlight.", "Uses the player's real Roblox username.", function()
 	RefreshAllESP()
 end)
 
-AddDashboardSlider(AimPage, "ESPUsernameSize", "ESP Username Size", 8, 32, "Controls the username text size above highlighted players.", "Default size: 14.", function(value)
+AddDashboardSlider(UI.AimPage, "ESPUsernameSize", "ESP Username Size", 8, 32, "Controls the username text size above highlighted players.", "Default size: 14.", function(value)
 	Settings.ESPUsernameSize = math.floor(value + 0.5)
 	RefreshAllESP()
 end, 0)
 
 -- NEW: Configurable Visual Enhancements Hooked to UI
-AddDashboardButton(AimPage, "TargetIndicator", "Draw Target Indicator", "★ Aimbot Customization: Realtime Tracking UI", "Spawns a highly responsive neon circle exactly over the enemy hit-part.")
-AddDashboardButton(AimPage, "FOVPulse", "FOV Pulse Animation", "★ Aimbot Customization: Action Feedback Response", "Pulses the main threat boundary ring smoothly when target acquisition is active.")
+AddDashboardButton(UI.AimPage, "TargetIndicator", "Draw Target Indicator", "★ Aimbot Customization: Realtime Tracking UI", "Spawns a highly responsive neon circle exactly over the enemy hit-part.")
+AddDashboardButton(UI.AimPage, "FOVPulse", "FOV Pulse Animation", "★ Aimbot Customization: Action Feedback Response", "Pulses the main threat boundary ring smoothly when target acquisition is active.")
 
-AddDashboardSlider(AimPage, "Smoothness", "Tracking Camera Smoothness", 1, 100, "★ Optimal Placement: Low-Medium (Natural Damping) (0.15)", "Alters tracking dampening alignment latency to emulate natural aim.")
-AddDashboardSlider(AimPage, "MaxDistance", "Target Maximum Distance", 50, 5000, "★ Optimal Placement: Low (Safe Render Limit) (1000)", "Calculates the ultimate cut-off barrier stud threshold for lock acquisition.")
+AddDashboardSlider(UI.AimPage, "Smoothness", "Tracking Camera Smoothness", 1, 100, "★ Optimal Placement: Low-Medium (Natural Damping) (0.15)", "Alters tracking dampening alignment latency to emulate natural aim.")
+AddDashboardSlider(UI.AimPage, "MaxDistance", "Target Maximum Distance", 50, 5000, "★ Optimal Placement: Low (Safe Render Limit) (1000)", "Calculates the ultimate cut-off barrier stud threshold for lock acquisition.")
 
-AddDashboardButton(VisPage, "ShowMarkedPlayerESP", "Show Marked Player ESP", "Marks one selected player with a bright yellow ESP.", "Selection resets if that player respawns or leaves.", function()
+AddDashboardButton(UI.VisPage, "ShowMarkedPlayerESP", "Show Marked Player ESP", "Marks one selected player with a bright yellow ESP.", "Selection resets if that player respawns or leaves.", function()
 	RefreshAllESP()
 end)
 
-AddMarkedPlayerDropdown(VisPage)
+AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Fire Axe", "Equips Fire Axe, starts the click/ability, waits, then teleports to the marked player's HumanoidRootPart.", "Requires a marked player. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Fire Axe", "Equips Fire Axe, starts the click/ability, waits, then teleports to the marked player's HumanoidRootPart.", "Requires a marked player. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
 end)
 
-AddDashboardSlider(VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after the click starts before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
+AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after the click starts before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
 	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
 end, 1)
 
-AddDashboardButton(VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
+AddDashboardButton(UI.VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
 	UpdateOffscreenWarnings()
 end)
 
-AddDashboardSlider(VisPage, "WarningIMGSize", "Warning IMG Size", 24, 100, "Controls the size of the off-screen warning logo.", "Default size: 58.", function(value)
+AddDashboardSlider(UI.VisPage, "WarningIMGSize", "Warning IMG Size", 24, 100, "Controls the size of the off-screen warning logo.", "Default size: 58.", function(value)
 	Settings.WarningIMGSize = math.floor(value + 0.5)
 	UpdateOffscreenIndicatorSizes()
 end, 0)
 
-AddDashboardButton(VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
-AddDashboardButton(VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
-AddDashboardSlider(VisPage, "FOVRadius", "Crosshair Threat Radius", 20, 500, "★ Optimal Placement: Low-Medium (Zero-Lag Filtering) (120)", "Adjusts the width scale boundary of your screen targeting frame ring.")
-AddDashboardSlider(VisPage, "ESPTransparency", "ESP Elements Opacity Alpha", 0.0, 1.0, "★ Optimal Placement: Medium High Density Fill (0.4)", "Modulates internal card outline overlay drawing opacity visibility scales.", function()
+AddDashboardButton(UI.VisPage, "ESPEnabled", "Highlight Player ESP Outlines", "★ Optimal Placement: Traditional Outline Overlay Engine", "Renders precise direct screen boundary overlays on top of live enemies.")
+AddDashboardButton(UI.VisPage, "ShowFOV", "Draw Screen Field of View", "★ Optimal Placement: Center Axis Display", "Toggles the crosshair peripheral validation threat boundary ring visibility.")
+AddDashboardSlider(UI.VisPage, "FOVRadius", "Crosshair Threat Radius", 20, 500, "★ Optimal Placement: Low-Medium (Zero-Lag Filtering) (120)", "Adjusts the width scale boundary of your screen targeting frame ring.")
+AddDashboardSlider(UI.VisPage, "ESPTransparency", "ESP Elements Opacity Alpha", 0.0, 1.0, "★ Optimal Placement: Medium High Density Fill (0.4)", "Modulates internal card outline overlay drawing opacity visibility scales.", function()
 	RefreshAllESP()
 end)
 
-AddDashboardButton(TestPage, "Fullbright", "Enable Fullbright", "Makes dark areas fully visible.", "Toggle enhanced lighting visibility.", function(enabled)
+AddDashboardButton(UI.TestPage, "Fullbright", "Enable Fullbright", "Makes dark areas fully visible.", "Toggle enhanced lighting visibility.", function(enabled)
 	UpdateFullbright(enabled)
 end)
 
-AddDashboardButton(TestPage, "ShowFPS", "Show FPS", "Displays your current frame rate.", "Useful for performance and lag testing.")
+AddDashboardButton(UI.TestPage, "ShowFPS", "Show FPS", "Displays your current frame rate.", "Useful for performance and lag testing.")
 
-AddDashboardButton(TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line to the current aim target.", "Green = visible, red = blocked by geometry.")
+AddDashboardButton(UI.TestPage, "WallCheckDebug", "WallCheck Debug", "Draws a line to the current aim target.", "Green = visible, red = blocked by geometry.")
 
-AddDashboardButton(TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
+AddDashboardButton(UI.TestPage, "TargetInfo", "Target Info", "Shows information about the current target.", "Displays health, distance and selected body part.")
 
 
-AddDashboardButton(FarmPage, "FarmEnabled", "Start Farm", "Automatically finds and processes nearby safes/registers.", "Game-specific farm logic using the existing target/remotes.", function(enabled)
+AddDashboardButton(UI.FarmPage, "FarmEnabled", "Start Farm", "Automatically finds and processes nearby safes/registers.", "Game-specific farm logic using the existing target/remotes.", function(enabled)
 	if enabled then Farm.Start() else Farm.Stop() end
 end)
 
-AddDashboardButton(FarmPage, "FarmAutoMoney", "Auto Money", "Automatically picks up nearby money drops.", "Optimized interval scan instead of RenderStepped.", function(enabled)
+AddDashboardButton(UI.FarmPage, "FarmAutoMoney", "Auto Money", "Automatically picks up nearby money drops.", "Optimized interval scan instead of RenderStepped.", function(enabled)
 	if enabled then Farm.StartAutoMoney() else Farm.StopAutoMoney() end
 end)
 
-AddDashboardDropdown(FarmPage, "InvisibilityMode", "Invisibility Mode", {"Air", "Bottom"}, "Air = current R6 animation mode. Bottom = keeps the HumanoidRootPart below the floor.", function()
+AddDashboardDropdown(UI.FarmPage, "InvisibilityMode", "Invisibility Mode", {"Air", "Bottom"}, "Air = current R6 animation mode. Bottom = keeps the HumanoidRootPart below the floor.", function()
 	if Settings.FarmInvisibility then
 		Farm.DisableInvisibility()
 		Settings.FarmInvisibility = true
@@ -4658,23 +4707,23 @@ AddDashboardDropdown(FarmPage, "InvisibilityMode", "Invisibility Mode", {"Air", 
 	end
 end)
 
-AddDashboardButton(FarmPage, "FarmInvisibility", "Invisibility", "Enables the selected invisibility mode.", "Air requires R6. Bottom uses the HumanoidRootPart and no invis animation.", function(enabled)
+AddDashboardButton(UI.FarmPage, "FarmInvisibility", "Invisibility", "Enables the selected invisibility mode.", "Air requires R6. Bottom uses the HumanoidRootPart and no invis animation.", function(enabled)
 	if enabled then Farm.EnableInvisibility() else Farm.DisableInvisibility() end
 end)
 
-AddDashboardSlider(FarmPage, "FarmInvisSpeed", "Invisibility Speed", 1, 40, "Controls movement speed while invisibility is active.", "12 is the default speed.", function(value)
+AddDashboardSlider(UI.FarmPage, "FarmInvisSpeed", "Invisibility Speed", 1, 40, "Controls movement speed while invisibility is active.", "12 is the default speed.", function(value)
 	Settings.FarmInvisSpeed = math.floor(value + 0.5)
 end, 0)
 
-AddDashboardButton(FarmPage, "ExploitSimDamage", "Exploit Simulator Damage", "Uses your own game's ReplicatedStorage.Remotes.ExploitHit RemoteEvent.", "When enabled, WallCheck is ignored for simulator damage so Bottom targets can still be hit.", function()
+AddDashboardButton(UI.FarmPage, "ExploitSimDamage", "Exploit Simulator Damage", "Uses your own game's ReplicatedStorage.Remotes.ExploitHit RemoteEvent.", "When enabled, WallCheck is ignored for simulator damage so Bottom targets can still be hit.", function()
 	Target = nil
 end)
 
-AddDashboardSlider(FarmPage, "ExploitSimDamageAmount", "Exploit Sim Damage", 1, 100, "Damage requested from your own simulator server.", "The server still validates and clamps the value.", function(value)
+AddDashboardSlider(UI.FarmPage, "ExploitSimDamageAmount", "Exploit Sim Damage", 1, 100, "Damage requested from your own simulator server.", "The server still validates and clamps the value.", function(value)
 	Settings.ExploitSimDamageAmount = math.floor(value + 0.5)
 end, 0)
 
-AddDashboardButton(FarmPage, "PanicMode", "PanicMode", "Automatically enables the selected Invisibility Mode when your health drops below 15 HP.", "Triggers once per life. Invisibility stays enabled until you disable it manually or respawn.", function(enabled)
+AddDashboardButton(UI.FarmPage, "PanicMode", "PanicMode", "Automatically enables the selected Invisibility Mode when your health drops below 15 HP.", "Triggers once per life. Invisibility stays enabled until you disable it manually or respawn.", function(enabled)
 	if enabled then
 		Farm.EnablePanicMode()
 	else
@@ -4682,19 +4731,19 @@ AddDashboardButton(FarmPage, "PanicMode", "PanicMode", "Automatically enables th
 	end
 end)
 
-AddDashboardButton(FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle kick while enabled.", "Uses one Idled connection instead of a frame loop.", function(enabled)
+AddDashboardButton(UI.FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle kick while enabled.", "Uses one Idled connection instead of a frame loop.", function(enabled)
 	if enabled then Farm.EnableAntiAFK() else Farm.DisableAntiAFK() end
 end)
 
-AddDashboardButton(VisPage, "FarmSafeESP", "Safe / Register ESP", "Highlights farm safes and registers.", "Green = available, red = broken.", function(enabled)
+AddDashboardButton(UI.VisPage, "FarmSafeESP", "Safe / Register ESP", "Highlights farm safes and registers.", "Green = available, red = broken.", function(enabled)
 	if enabled then Farm.EnableSafeESP() else Farm.DisableSafeESP() end
 end)
 
-AddDashboardSlider(VisPage, "FarmESPTextSize", "Farm ESP Text Size", 10, 40, "Controls the Safe/Register ESP label size.", "No movement-speed control is included.", function(value)
+AddDashboardSlider(UI.VisPage, "FarmESPTextSize", "Farm ESP Text Size", 10, 40, "Controls the Safe/Register ESP label size.", "No movement-speed control is included.", function(value)
 	Settings.FarmESPTextSize = math.floor(value + 0.5)
 end, 0)
 
-AddDashboardButton(CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ultimate Hub remote calls plus incoming RemoteEvent traffic.", "80 console lines per 45 seconds. Shared API is exposed as getgenv().AehmreRemoteSpy / shared.AehmreRemoteSpy.", function(enabled)
+AddDashboardButton(UI.CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ultimate Hub remote calls plus incoming RemoteEvent traffic.", "80 console lines per 45 seconds. Shared API is exposed as getgenv().AehmreRemoteSpy / shared.AehmreRemoteSpy.", function(enabled)
 	RemoteSpy.ResetWindow()
 
 	if enabled then
@@ -4707,20 +4756,20 @@ AddDashboardButton(CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ultim
 	end
 end)
 
-local CycleColorBtn = Instance.new("TextButton", CustPage)
-CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
-CycleColorBtn.BackgroundColor3 = Styles.CardBg
-CycleColorBtn.Font = Enum.Font.GothamBold
-CycleColorBtn.TextColor3 = Styles.TextMain
-CycleColorBtn.Text = "SWAP ACCENT PALETTE CREATIVE MATRIX"
-CycleColorBtn.TextSize = 10
-CycleColorBtn.BorderSizePixel = 0
-Instance.new("UICorner", CycleColorBtn).CornerRadius = UDim.new(0, 6)
-local CycleStroke = Instance.new("UIStroke", CycleColorBtn)
-ApplyPaletteStroke(CycleStroke)
-HookButtonAnimations(CycleColorBtn, Styles.CardBg, Styles.CardHover)
+UI.CycleColorBtn = Instance.new("TextButton", UI.CustPage)
+UI.CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
+UI.CycleColorBtn.BackgroundColor3 = Styles.CardBg
+UI.CycleColorBtn.Font = Enum.Font.GothamBold
+UI.CycleColorBtn.TextColor3 = Styles.TextMain
+UI.CycleColorBtn.Text = "SWAP ACCENT PALETTE CREATIVE MATRIX"
+UI.CycleColorBtn.TextSize = 10
+UI.CycleColorBtn.BorderSizePixel = 0
+Instance.new("UICorner", UI.CycleColorBtn).CornerRadius = UDim.new(0, 6)
+UI.CycleStroke = Instance.new("UIStroke", UI.CycleColorBtn)
+ApplyPaletteStroke(UI.CycleStroke)
+HookButtonAnimations(UI.CycleColorBtn, Styles.CardBg, Styles.CardHover)
 
-CycleColorBtn.MouseButton1Click:Connect(function()
+UI.CycleColorBtn.MouseButton1Click:Connect(function()
 	Settings.AccentColorIndex = Settings.AccentColorIndex + 1
 	if Settings.AccentColorIndex > #AccentPresets then Settings.AccentColorIndex = 1 end
 	local currentAccent = AccentPresets[Settings.AccentColorIndex]
@@ -4730,72 +4779,72 @@ CycleColorBtn.MouseButton1Click:Connect(function()
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
-	SidebarContainer.ScrollBarImageColor3 = currentAccent
-	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
-	TweenObj(ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
-	TweenObj(ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
-	TweenObj(SubTitle, { TextColor3 = currentAccent }, 0.25)
-	for _, tData in pairs(Tabs) do
+	UI.SidebarContainer.ScrollBarImageColor3 = currentAccent
+	TweenObj(UI.CycleStroke, { Color = currentAccent }, 0.25)
+	TweenObj(UI.SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(UI.ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
+	TweenObj(UI.ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(UI.SubTitle, { TextColor3 = currentAccent }, 0.25)
+	for _, tData in pairs(UI.Tabs) do
 		tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
 		tData.Page.ScrollBarImageColor3 = currentAccent
 	end
 end)
 
-AddDashboardSlider(CustPage, "MenuTransparency", "Background Canvas Alpha Opacity", 0, 100, "★ Configuration Layer: Realtime Glass Damping Modulator", "Blends the main user interface frames seamlessly into the background layers.", function(val)
+AddDashboardSlider(UI.CustPage, "MenuTransparency", "Background Canvas Alpha Opacity", 0, 100, "★ Configuration Layer: Realtime Glass Damping Modulator", "Blends the main user interface frames seamlessly into the background layers.", function(val)
 	local calculatedAlpha = val / 100
-	MainFrame.BackgroundTransparency = calculatedAlpha
-	HeaderBar.BackgroundTransparency = calculatedAlpha
-	Sidebar.BackgroundTransparency = calculatedAlpha
+	UI.MainFrame.BackgroundTransparency = calculatedAlpha
+	UI.HeaderBar.BackgroundTransparency = calculatedAlpha
+	UI.Sidebar.BackgroundTransparency = calculatedAlpha
 end)
 
-AddDashboardSlider(CustPage, "BorderThickness", "User Interface Structural Thickness", 1, 5, "★ Configuration Layer: Outer Boundary Vector Frame Line Scaling", "Alters the pixel width dimensions of all highlighted main outer boundaries.", function(val)
-	MainStroke.Thickness = val
+AddDashboardSlider(UI.CustPage, "BorderThickness", "User Interface Structural Thickness", 1, 5, "★ Configuration Layer: Outer Boundary Vector Frame Line Scaling", "Alters the pixel width dimensions of all highlighted main outer boundaries.", function(val)
+	UI.MainStroke.Thickness = val
 end)
 
-AddKeybindControl(KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
-AddKeybindControl(KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
-AddKeybindControl(KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
+AddKeybindControl(UI.KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
+AddKeybindControl(UI.KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
+AddKeybindControl(UI.KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
 -- NEW: Config Save Button
-local SaveConfigBtn = Instance.new("TextButton", SettPage)
-SaveConfigBtn.Size = UDim2.new(0.94, 0, 0, 36)
-SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(35, 40, 50)
-SaveConfigBtn.Font = Enum.Font.GothamBold
-SaveConfigBtn.TextColor3 = Styles.TextMain
-SaveConfigBtn.Text = "SAVE CONFIGURATION PRESETS"
-SaveConfigBtn.TextSize = 10
-SaveConfigBtn.BorderSizePixel = 0
-Instance.new("UICorner", SaveConfigBtn).CornerRadius = UDim.new(0, 6)
-local SaveStroke = Instance.new("UIStroke", SaveConfigBtn)
-ApplyPaletteStroke(SaveStroke)
-HookButtonAnimations(SaveConfigBtn, Color3.fromRGB(35, 40, 50), Color3.fromRGB(45, 50, 65))
+UI.SaveConfigBtn = Instance.new("TextButton", UI.SettPage)
+UI.SaveConfigBtn.Size = UDim2.new(0.94, 0, 0, 36)
+UI.SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(35, 40, 50)
+UI.SaveConfigBtn.Font = Enum.Font.GothamBold
+UI.SaveConfigBtn.TextColor3 = Styles.TextMain
+UI.SaveConfigBtn.Text = "SAVE CONFIGURATION PRESETS"
+UI.SaveConfigBtn.TextSize = 10
+UI.SaveConfigBtn.BorderSizePixel = 0
+Instance.new("UICorner", UI.SaveConfigBtn).CornerRadius = UDim.new(0, 6)
+UI.SaveStroke = Instance.new("UIStroke", UI.SaveConfigBtn)
+ApplyPaletteStroke(UI.SaveStroke)
+HookButtonAnimations(UI.SaveConfigBtn, Color3.fromRGB(35, 40, 50), Color3.fromRGB(45, 50, 65))
 
-SaveConfigBtn.MouseButton1Click:Connect(function()
+UI.SaveConfigBtn.MouseButton1Click:Connect(function()
 	env[CurrentScriptID .. "_DataPacket"] = {
 		Settings = table.clone(Settings)
 	}
-	TweenObj(SaveConfigBtn, { BackgroundColor3 = Color3.fromRGB(50, 200, 100) }, 0.15)
-	SaveConfigBtn.Text = "CONFIGURATION SAVED SUCCESSFULLY"
+	TweenObj(UI.SaveConfigBtn, { BackgroundColor3 = Color3.fromRGB(50, 200, 100) }, 0.15)
+	UI.SaveConfigBtn.Text = "CONFIGURATION SAVED SUCCESSFULLY"
 	SystemLogEvent("Configuration Profile Saved.")
 	task.wait(1.5)
-	TweenObj(SaveConfigBtn, { BackgroundColor3 = Color3.fromRGB(35, 40, 50) }, 0.25)
-	SaveConfigBtn.Text = "SAVE CONFIGURATION PRESETS"
+	TweenObj(UI.SaveConfigBtn, { BackgroundColor3 = Color3.fromRGB(35, 40, 50) }, 0.25)
+	UI.SaveConfigBtn.Text = "SAVE CONFIGURATION PRESETS"
 end)
 
 -- NEW: Config Reset Button
-local ResetConfigBtn = Instance.new("TextButton", SettPage)
-ResetConfigBtn.Size = UDim2.new(0.94, 0, 0, 36)
-ResetConfigBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 35)
-ResetConfigBtn.Font = Enum.Font.GothamBold
-ResetConfigBtn.TextColor3 = Color3.fromRGB(250, 180, 100)
-ResetConfigBtn.Text = "RESET ALL SYSTEMS TO FACTORY DEFAULTS"
-ResetConfigBtn.TextSize = 10
-ResetConfigBtn.BorderSizePixel = 0
-Instance.new("UICorner", ResetConfigBtn).CornerRadius = UDim.new(0, 6)
-HookButtonAnimations(ResetConfigBtn, Color3.fromRGB(50, 40, 35), Color3.fromRGB(65, 50, 45))
+UI.ResetConfigBtn = Instance.new("TextButton", UI.SettPage)
+UI.ResetConfigBtn.Size = UDim2.new(0.94, 0, 0, 36)
+UI.ResetConfigBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 35)
+UI.ResetConfigBtn.Font = Enum.Font.GothamBold
+UI.ResetConfigBtn.TextColor3 = Color3.fromRGB(250, 180, 100)
+UI.ResetConfigBtn.Text = "RESET ALL SYSTEMS TO FACTORY DEFAULTS"
+UI.ResetConfigBtn.TextSize = 10
+UI.ResetConfigBtn.BorderSizePixel = 0
+Instance.new("UICorner", UI.ResetConfigBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(UI.ResetConfigBtn, Color3.fromRGB(50, 40, 35), Color3.fromRGB(65, 50, 45))
 
 local function FactoryResetSettings()
 	for key, value in pairs(DefaultSettings) do Settings[key] = value end
@@ -4825,14 +4874,14 @@ local function FactoryResetSettings()
 	TargetDot.Color = currentAccent
 	FPSDisplay.Color = currentAccent
 	TargetInfoText.Color = currentAccent
-	SidebarContainer.ScrollBarImageColor3 = currentAccent
-	TweenObj(CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
-	TweenObj(ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
-	TweenObj(ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
-	TweenObj(SubTitle, { TextColor3 = currentAccent }, 0.25)
+	UI.SidebarContainer.ScrollBarImageColor3 = currentAccent
+	TweenObj(UI.CycleStroke, { Color = currentAccent }, 0.25)
+	TweenObj(UI.SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(UI.ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
+	TweenObj(UI.ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
+	TweenObj(UI.SubTitle, { TextColor3 = currentAccent }, 0.25)
 
-	for _, tData in pairs(Tabs) do
+	for _, tData in pairs(UI.Tabs) do
 		tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
 		tData.Page.ScrollBarImageColor3 = currentAccent
 	end
@@ -4841,176 +4890,176 @@ local function FactoryResetSettings()
 	UpdateLeftPanelShortcuts()
 end
 
-ResetConfigBtn.MouseButton1Click:Connect(function()
+UI.ResetConfigBtn.MouseButton1Click:Connect(function()
 	FactoryResetSettings()
 	SystemLogEvent("Engine Reverted to Factory Configuration.")
 end)
 
-local KillEngineBtn = Instance.new("TextButton", SettPage)
-KillEngineBtn.Size = UDim2.new(0.94, 0, 0, 36)
-KillEngineBtn.BackgroundColor3 = Color3.fromRGB(45, 20, 25)
-KillEngineBtn.Font = Enum.Font.GothamBold
-KillEngineBtn.TextColor3 = Color3.fromRGB(240, 110, 110)
-KillEngineBtn.Text = "UNLOAD ENGINE MATRIX AND WIPE GUI"
-KillEngineBtn.TextSize = 10
-KillEngineBtn.BorderSizePixel = 0
-Instance.new("UICorner", KillEngineBtn).CornerRadius = UDim.new(0, 6)
-HookButtonAnimations(KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(60, 25, 30))
+UI.KillEngineBtn = Instance.new("TextButton", UI.SettPage)
+UI.KillEngineBtn.Size = UDim2.new(0.94, 0, 0, 36)
+UI.KillEngineBtn.BackgroundColor3 = Color3.fromRGB(45, 20, 25)
+UI.KillEngineBtn.Font = Enum.Font.GothamBold
+UI.KillEngineBtn.TextColor3 = Color3.fromRGB(240, 110, 110)
+UI.KillEngineBtn.Text = "UNLOAD ENGINE MATRIX AND WIPE GUI"
+UI.KillEngineBtn.TextSize = 10
+UI.KillEngineBtn.BorderSizePixel = 0
+Instance.new("UICorner", UI.KillEngineBtn).CornerRadius = UDim.new(0, 6)
+HookButtonAnimations(UI.KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(60, 25, 30))
 
-KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
+UI.KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
 
 Compat.Log("BOOT", "Dashboard controls initialized")
 
-local AuthFrame = Instance.new("Frame", ScreenGui)
-AuthFrame.Name = "AccessFrame"
-AuthFrame.Size = UDim2.new(0, 390, 0, 250)
-AuthFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-AuthFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-AuthFrame.BackgroundColor3 = Styles.Bg
-AuthFrame.BorderSizePixel = 0
-AuthFrame.Active = true
-AuthFrame.Visible = true
-Instance.new("UICorner", AuthFrame).CornerRadius = UDim.new(0, 10)
+UI.AuthFrame = Instance.new("Frame", UI.ScreenGui)
+UI.AuthFrame.Name = "AccessFrame"
+UI.AuthFrame.Size = UDim2.new(0, 390, 0, 250)
+UI.AuthFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+UI.AuthFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+UI.AuthFrame.BackgroundColor3 = Styles.Bg
+UI.AuthFrame.BorderSizePixel = 0
+UI.AuthFrame.Active = true
+UI.AuthFrame.Visible = true
+Instance.new("UICorner", UI.AuthFrame).CornerRadius = UDim.new(0, 10)
 
-AuthUIScale = Instance.new("UIScale", AuthFrame)
+UI.AuthUIScale = Instance.new("UIScale", UI.AuthFrame)
 
-local AuthStroke = Instance.new("UIStroke", AuthFrame)
-ApplyPaletteStroke(AuthStroke, 1)
-AuthStroke.Thickness = 1.5
+UI.AuthStroke = Instance.new("UIStroke", UI.AuthFrame)
+ApplyPaletteStroke(UI.AuthStroke, 1)
+UI.AuthStroke.Thickness = 1.5
 
-local AuthHeader = Instance.new("Frame", AuthFrame)
-AuthHeader.Size = UDim2.new(1, 0, 0, 44)
-AuthHeader.BackgroundColor3 = Styles.SidebarBg
-AuthHeader.BorderSizePixel = 0
-Instance.new("UICorner", AuthHeader).CornerRadius = UDim.new(0, 10)
+UI.AuthHeader = Instance.new("Frame", UI.AuthFrame)
+UI.AuthHeader.Size = UDim2.new(1, 0, 0, 44)
+UI.AuthHeader.BackgroundColor3 = Styles.SidebarBg
+UI.AuthHeader.BorderSizePixel = 0
+Instance.new("UICorner", UI.AuthHeader).CornerRadius = UDim.new(0, 10)
 
-local AuthHeaderMask = Instance.new("Frame", AuthHeader)
-AuthHeaderMask.Size = UDim2.new(1, 0, 0, 10)
-AuthHeaderMask.Position = UDim2.new(0, 0, 1, -10)
-AuthHeaderMask.BackgroundColor3 = Styles.SidebarBg
-AuthHeaderMask.BorderSizePixel = 0
+UI.AuthHeaderMask = Instance.new("Frame", UI.AuthHeader)
+UI.AuthHeaderMask.Size = UDim2.new(1, 0, 0, 10)
+UI.AuthHeaderMask.Position = UDim2.new(0, 0, 1, -10)
+UI.AuthHeaderMask.BackgroundColor3 = Styles.SidebarBg
+UI.AuthHeaderMask.BorderSizePixel = 0
 
-local AuthTitle = Instance.new("TextLabel", AuthHeader)
-AuthTitle.Size = UDim2.new(1, -28, 0, 20)
-AuthTitle.Position = UDim2.new(0, 14, 0, 7)
-AuthTitle.BackgroundTransparency = 1
-AuthTitle.Text = "AEHMRE // WELCOME"
-AuthTitle.Font = Enum.Font.GothamBold
-AuthTitle.TextSize = 13
-AuthTitle.TextColor3 = Styles.TextMain
-AuthTitle.TextXAlignment = Enum.TextXAlignment.Left
+UI.AuthTitle = Instance.new("TextLabel", UI.AuthHeader)
+UI.AuthTitle.Size = UDim2.new(1, -28, 0, 20)
+UI.AuthTitle.Position = UDim2.new(0, 14, 0, 7)
+UI.AuthTitle.BackgroundTransparency = 1
+UI.AuthTitle.Text = "AEHMRE // WELCOME"
+UI.AuthTitle.Font = Enum.Font.GothamBold
+UI.AuthTitle.TextSize = 13
+UI.AuthTitle.TextColor3 = Styles.TextMain
+UI.AuthTitle.TextXAlignment = Enum.TextXAlignment.Left
 
-local AuthSubTitle = Instance.new("TextLabel", AuthHeader)
-AuthSubTitle.Size = UDim2.new(1, -28, 0, 14)
-AuthSubTitle.Position = UDim2.new(0, 14, 0, 25)
-AuthSubTitle.BackgroundTransparency = 1
-AuthSubTitle.Text = "ULTIMATE HUB"
-AuthSubTitle.Font = Enum.Font.GothamSemibold
-AuthSubTitle.TextSize = 9
-AuthSubTitle.TextColor3 = Styles.Accent
-AuthSubTitle.TextXAlignment = Enum.TextXAlignment.Left
+UI.AuthSubTitle = Instance.new("TextLabel", UI.AuthHeader)
+UI.AuthSubTitle.Size = UDim2.new(1, -28, 0, 14)
+UI.AuthSubTitle.Position = UDim2.new(0, 14, 0, 25)
+UI.AuthSubTitle.BackgroundTransparency = 1
+UI.AuthSubTitle.Text = "ULTIMATE HUB"
+UI.AuthSubTitle.Font = Enum.Font.GothamSemibold
+UI.AuthSubTitle.TextSize = 9
+UI.AuthSubTitle.TextColor3 = Styles.Accent
+UI.AuthSubTitle.TextXAlignment = Enum.TextXAlignment.Left
 
-local AuthInfo = Instance.new("TextLabel", AuthFrame)
-AuthInfo.Size = UDim2.new(1, -32, 0, 38)
-AuthInfo.Position = UDim2.new(0, 16, 0, 62)
-AuthInfo.BackgroundTransparency = 1
-AuthInfo.Text = "Join the Discord for updates, announcements and future access-system information."
-AuthInfo.Font = Enum.Font.Gotham
-AuthInfo.TextSize = 10
-AuthInfo.TextWrapped = true
-AuthInfo.TextColor3 = Styles.TextDark
-AuthInfo.TextXAlignment = Enum.TextXAlignment.Left
-AuthInfo.TextYAlignment = Enum.TextYAlignment.Top
+UI.AuthInfo = Instance.new("TextLabel", UI.AuthFrame)
+UI.AuthInfo.Size = UDim2.new(1, -32, 0, 38)
+UI.AuthInfo.Position = UDim2.new(0, 16, 0, 62)
+UI.AuthInfo.BackgroundTransparency = 1
+UI.AuthInfo.Text = "Join the Discord for updates, announcements and future access-system information."
+UI.AuthInfo.Font = Enum.Font.Gotham
+UI.AuthInfo.TextSize = 10
+UI.AuthInfo.TextWrapped = true
+UI.AuthInfo.TextColor3 = Styles.TextDark
+UI.AuthInfo.TextXAlignment = Enum.TextXAlignment.Left
+UI.AuthInfo.TextYAlignment = Enum.TextYAlignment.Top
 
-local KeyInput = Instance.new("TextBox", AuthFrame)
-KeyInput.Size = UDim2.new(1, -32, 0, 38)
-KeyInput.Position = UDim2.new(0, 16, 0, 108)
-KeyInput.BackgroundColor3 = Styles.CardBg
-KeyInput.BorderSizePixel = 0
-KeyInput.ClearTextOnFocus = false
-KeyInput.TextEditable = false
-KeyInput.Text = "KEY SYSTEM DISABLED FOR NOW"
-KeyInput.TextColor3 = Styles.TextDark
-KeyInput.Font = Enum.Font.Code
-KeyInput.TextSize = 11
-KeyInput.TextXAlignment = Enum.TextXAlignment.Center
-KeyInput.Active = false
-KeyInput.Selectable = false
-Instance.new("UICorner", KeyInput).CornerRadius = UDim.new(0, 6)
+UI.KeyInput = Instance.new("TextBox", UI.AuthFrame)
+UI.KeyInput.Size = UDim2.new(1, -32, 0, 38)
+UI.KeyInput.Position = UDim2.new(0, 16, 0, 108)
+UI.KeyInput.BackgroundColor3 = Styles.CardBg
+UI.KeyInput.BorderSizePixel = 0
+UI.KeyInput.ClearTextOnFocus = false
+UI.KeyInput.TextEditable = false
+UI.KeyInput.Text = "KEY SYSTEM DISABLED FOR NOW"
+UI.KeyInput.TextColor3 = Styles.TextDark
+UI.KeyInput.Font = Enum.Font.Code
+UI.KeyInput.TextSize = 11
+UI.KeyInput.TextXAlignment = Enum.TextXAlignment.Center
+UI.KeyInput.Active = false
+UI.KeyInput.Selectable = false
+Instance.new("UICorner", UI.KeyInput).CornerRadius = UDim.new(0, 6)
 
-local KeyStroke = Instance.new("UIStroke", KeyInput)
-ApplyPaletteStroke(KeyStroke, 3)
+UI.KeyStroke = Instance.new("UIStroke", UI.KeyInput)
+ApplyPaletteStroke(UI.KeyStroke, 3)
 
-local CopyDiscordBtn = Instance.new("TextButton", AuthFrame)
-CopyDiscordBtn.Size = UDim2.new(0.5, -20, 0, 36)
-CopyDiscordBtn.Position = UDim2.new(0, 16, 0, 158)
-CopyDiscordBtn.BackgroundColor3 = Styles.Accent
-CopyDiscordBtn.BorderSizePixel = 0
-CopyDiscordBtn.Text = "COPY DISCORD INVITE"
-CopyDiscordBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-CopyDiscordBtn.Font = Enum.Font.GothamBold
-CopyDiscordBtn.TextSize = 9
-CopyDiscordBtn.AutoButtonColor = false
-Instance.new("UICorner", CopyDiscordBtn).CornerRadius = UDim.new(0, 6)
+UI.CopyDiscordBtn = Instance.new("TextButton", UI.AuthFrame)
+UI.CopyDiscordBtn.Size = UDim2.new(0.5, -20, 0, 36)
+UI.CopyDiscordBtn.Position = UDim2.new(0, 16, 0, 158)
+UI.CopyDiscordBtn.BackgroundColor3 = Styles.Accent
+UI.CopyDiscordBtn.BorderSizePixel = 0
+UI.CopyDiscordBtn.Text = "COPY DISCORD INVITE"
+UI.CopyDiscordBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+UI.CopyDiscordBtn.Font = Enum.Font.GothamBold
+UI.CopyDiscordBtn.TextSize = 9
+UI.CopyDiscordBtn.AutoButtonColor = false
+Instance.new("UICorner", UI.CopyDiscordBtn).CornerRadius = UDim.new(0, 6)
 
-local IgnoreBtn = Instance.new("TextButton", AuthFrame)
-IgnoreBtn.Size = UDim2.new(0.5, -20, 0, 36)
-IgnoreBtn.Position = UDim2.new(0.5, 4, 0, 158)
-IgnoreBtn.BackgroundColor3 = Styles.CardBg
-IgnoreBtn.BorderSizePixel = 0
-IgnoreBtn.Text = "IGNORE"
-IgnoreBtn.TextColor3 = Styles.TextMain
-IgnoreBtn.Font = Enum.Font.GothamBold
-IgnoreBtn.TextSize = 10
-IgnoreBtn.AutoButtonColor = false
-Instance.new("UICorner", IgnoreBtn).CornerRadius = UDim.new(0, 6)
+UI.IgnoreBtn = Instance.new("TextButton", UI.AuthFrame)
+UI.IgnoreBtn.Size = UDim2.new(0.5, -20, 0, 36)
+UI.IgnoreBtn.Position = UDim2.new(0.5, 4, 0, 158)
+UI.IgnoreBtn.BackgroundColor3 = Styles.CardBg
+UI.IgnoreBtn.BorderSizePixel = 0
+UI.IgnoreBtn.Text = "IGNORE"
+UI.IgnoreBtn.TextColor3 = Styles.TextMain
+UI.IgnoreBtn.Font = Enum.Font.GothamBold
+UI.IgnoreBtn.TextSize = 10
+UI.IgnoreBtn.AutoButtonColor = false
+Instance.new("UICorner", UI.IgnoreBtn).CornerRadius = UDim.new(0, 6)
 
-local AuthStatus = Instance.new("TextLabel", AuthFrame)
-AuthStatus.Size = UDim2.new(1, -32, 0, 30)
-AuthStatus.Position = UDim2.new(0, 16, 0, 204)
-AuthStatus.BackgroundTransparency = 1
-AuthStatus.Text = "Discord access is optional."
-AuthStatus.Font = Enum.Font.GothamSemibold
-AuthStatus.TextSize = 9
-AuthStatus.TextWrapped = true
-AuthStatus.TextColor3 = Styles.TextDark
+UI.AuthStatus = Instance.new("TextLabel", UI.AuthFrame)
+UI.AuthStatus.Size = UDim2.new(1, -32, 0, 30)
+UI.AuthStatus.Position = UDim2.new(0, 16, 0, 204)
+UI.AuthStatus.BackgroundTransparency = 1
+UI.AuthStatus.Text = "Discord access is optional."
+UI.AuthStatus.Font = Enum.Font.GothamSemibold
+UI.AuthStatus.TextSize = 9
+UI.AuthStatus.TextWrapped = true
+UI.AuthStatus.TextColor3 = Styles.TextDark
 
-HookButtonAnimations(CopyDiscordBtn, Styles.Accent, Styles.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.15))
-HookButtonAnimations(IgnoreBtn, Styles.CardBg, Styles.CardHover)
+HookButtonAnimations(UI.CopyDiscordBtn, Styles.Accent, Styles.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.15))
+HookButtonAnimations(UI.IgnoreBtn, Styles.CardBg, Styles.CardHover)
 
-local AuthDragState = {
+UI.AuthDragState = {
 	Dragging = false,
 	Input = nil,
 	Start = nil,
 	StartPosition = nil
 }
 
-AuthHeader.InputBegan:Connect(function(input)
+UI.AuthHeader.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		AuthDragState.Dragging = true
-		AuthDragState.Start = input.Position
-		AuthDragState.StartPosition = AuthFrame.Position
+		UI.AuthDragState.Dragging = true
+		UI.AuthDragState.Start = input.Position
+		UI.AuthDragState.StartPosition = UI.AuthFrame.Position
 
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				AuthDragState.Dragging = false
+				UI.AuthDragState.Dragging = false
 			end
 		end)
 	end
 end)
 
-AuthHeader.InputChanged:Connect(function(input)
+UI.AuthHeader.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		AuthDragState.Input = input
+		UI.AuthDragState.Input = input
 	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == AuthDragState.Input and AuthDragState.Dragging then
-		local delta = input.Position - AuthDragState.Start
-		local startPosition = AuthDragState.StartPosition
+	if input == UI.AuthDragState.Input and UI.AuthDragState.Dragging then
+		local delta = input.Position - UI.AuthDragState.Start
+		local startPosition = UI.AuthDragState.StartPosition
 
-		AuthFrame.Position = UDim2.new(
+		UI.AuthFrame.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
@@ -5020,11 +5069,11 @@ SafeConnect(UserInputService.InputChanged, function(input)
 end)
 
 local function SetAuthStatus(text, color)
-	AuthStatus.Text = text
-	AuthStatus.TextColor3 = color or Styles.TextDark
+	UI.AuthStatus.Text = text
+	UI.AuthStatus.TextColor3 = color or Styles.TextDark
 end
 
-CopyDiscordBtn.MouseButton1Click:Connect(function()
+UI.CopyDiscordBtn.MouseButton1Click:Connect(function()
 	if DiscordInvite:find("YOUR_INVITE", 1, true) then
 		SetAuthStatus("Set your Discord invite in DiscordInvite first.", Color3.fromRGB(255, 190, 90))
 		return
@@ -5038,13 +5087,13 @@ CopyDiscordBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-IgnoreBtn.MouseButton1Click:Connect(function()
+UI.IgnoreBtn.MouseButton1Click:Connect(function()
 	AccessNoticeDismissed = true
-	AuthFrame.Visible = false
-	MainFrame.Visible = true
+	UI.AuthFrame.Visible = false
+	UI.MainFrame.Visible = true
 
-	if MobileControls then
-		MobileControls.Visible = IsTouchDevice
+	if UI.MobileControls then
+		UI.MobileControls.Visible = IsTouchDevice
 	end
 
 	UpdateMobileControlButtons()
@@ -5055,16 +5104,16 @@ end)
 local function UpdateResponsiveScale()
 	local viewport = Camera.ViewportSize
 
-	if MainUIScale then
+	if UI.MainUIScale then
 		local widthScale = (viewport.X * 0.92) / 540
 		local heightScale = (viewport.Y * 0.86) / 415
-		MainUIScale.Scale = math.clamp(math.min(widthScale, heightScale), 0.55, 1)
+		UI.MainUIScale.Scale = math.clamp(math.min(widthScale, heightScale), 0.55, 1)
 	end
 
-	if AuthUIScale then
+	if UI.AuthUIScale then
 		local authWidthScale = (viewport.X * 0.92) / 390
 		local authHeightScale = (viewport.Y * 0.86) / 250
-		AuthUIScale.Scale = math.clamp(math.min(authWidthScale, authHeightScale), 0.62, 1)
+		UI.AuthUIScale.Scale = math.clamp(math.min(authWidthScale, authHeightScale), 0.62, 1)
 	end
 end
 
@@ -5072,10 +5121,18 @@ Compat.Log("BOOT", "Auth UI initialized")
 UpdateResponsiveScale()
 SafeConnect(Camera:GetPropertyChangedSignal("ViewportSize"), UpdateResponsiveScale)
 
-MainFrame.Visible = false
-AuthFrame.Visible = true
-MobileControls.Visible = false
+UI.MainFrame.Visible = false
+UI.AuthFrame.Visible = true
+UI.MobileControls.Visible = false
 UpdateKeybindValueButtons()
 UpdateLeftPanelShortcuts()
-print("[HubRecovery] HUB LOADED")
+SetBootStatus("Ready")
+task.defer(function()
+\ttask.wait(0.15)
+\tif UI.BootGui then
+\t\tUI.BootGui:Destroy()
+\t\tUI.BootGui = nil
+\t\tUI.BootLabel = nil
+\tend
+end)
 Compat.Log("READY", string.format("Hub initialized in %.2fs", os.clock() - Compat.BootStarted))
