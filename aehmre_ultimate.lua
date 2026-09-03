@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - JJSPLOIT COMPAT DEBUG //
+-- // AEHMRE ULTIMATE HUB - JJSPLOIT CONSOLE FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -90,7 +90,7 @@ end
 function Compat.WarnOnce(key, message)
 	if Compat.Warned[key] then return end
 	Compat.Warned[key] = true
-	warn(string.format("[HubDebug][COMPAT] %s", tostring(message)))
+	print(string.format("[HubDebug][COMPAT-WARN] %s", tostring(message)))
 end
 
 function Compat.Detect()
@@ -2206,7 +2206,8 @@ end
 local ToolEquipSpy = {
 	CharacterConnection = nil,
 	BoundCharacter = nil,
-	MaxDescendants = 80
+	MaxDescendants = 20,
+	MaxOutputLength = 1800
 }
 
 local function GetRelativeToolPath(tool, object)
@@ -2229,33 +2230,37 @@ local function PrintEquippedToolSnapshot(tool)
 
 		local descendants = tool:GetDescendants()
 		local shown = math.min(#descendants, ToolEquipSpy.MaxDescendants)
-
-		print(string.format(
-			"[ToolEquipSpy] EQUIPPED | Name=%s | ToolTip=%s | Descendants=%d",
-			tool.Name,
-			tostring(tool.ToolTip),
-			#descendants
-		))
+		local parts = {}
 
 		for index = 1, shown do
 			local object = descendants[index]
-			print(string.format(
-				"[ToolEquipSpy] %02d | %s | Class=%s",
+			parts[#parts + 1] = string.format(
+				"%02d:%s<%s>",
 				index,
 				GetRelativeToolPath(tool, object),
 				object.ClassName
-			))
+			)
 		end
 
 		if #descendants > shown then
-			print(string.format(
-				"[ToolEquipSpy] ... %d more descendants hidden to avoid console spam",
-				#descendants - shown
-			))
+			parts[#parts + 1] = string.format("+%d more", #descendants - shown)
 		end
+
+		local message = string.format(
+			"[ToolEquipSpy] EQUIPPED | Name=%s | ToolTip=%s | Descendants=%d | %s",
+			tool.Name,
+			tostring(tool.ToolTip),
+			#descendants,
+			table.concat(parts, " ; ")
+		)
+
+		if #message > ToolEquipSpy.MaxOutputLength then
+			message = message:sub(1, ToolEquipSpy.MaxOutputLength) .. " ..."
+		end
+
+		print(message)
 	end)
 end
-
 local function BindToolEquipSpy(character)
 	if ToolEquipSpy.CharacterConnection then
 		ToolEquipSpy.CharacterConnection:Disconnect()
