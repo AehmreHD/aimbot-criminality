@@ -1,6 +1,5 @@
--- // (SCRIPT-NAME) //
+-- // AEHMRE ULTIMATE HUB - JJSPLOIT COMPAT DEBUG //
 -- MADE BY: Emre_31er
-
 local Lighting = game:GetService("Lighting")
 
 --// Cross-Script Hot-Reload State Transfer Engine
@@ -75,6 +74,114 @@ local Camera = workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local IsTouchDevice = UserInputService.TouchEnabled
 local HasKeyboard = UserInputService.KeyboardEnabled
+
+local Compat = {
+	Executor = "Unknown",
+	Version = "",
+	Capabilities = {},
+	Warned = {},
+	BootStarted = os.clock()
+}
+
+function Compat.Log(stage, message)
+	print(string.format("[HubDebug][%s] %s", tostring(stage), tostring(message)))
+end
+
+function Compat.WarnOnce(key, message)
+	if Compat.Warned[key] then return end
+	Compat.Warned[key] = true
+	warn(string.format("[HubDebug][COMPAT] %s", tostring(message)))
+end
+
+function Compat.Detect()
+	pcall(function()
+		if typeof(identifyexecutor) == "function" then
+			local name, version = identifyexecutor()
+			Compat.Executor = tostring(name or "Unknown")
+			Compat.Version = tostring(version or "")
+		elseif typeof(getexecutorname) == "function" then
+			Compat.Executor = tostring(getexecutorname() or "Unknown")
+		end
+	end)
+
+	Compat.Capabilities.Drawing = typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
+	Compat.Capabilities.MousePress = typeof(mouse1press) == "function"
+	Compat.Capabilities.MouseRelease = typeof(mouse1release) == "function"
+	Compat.Capabilities.Clipboard = typeof(setclipboard) == "function"
+	Compat.Capabilities.GetGenv = typeof(getgenv) == "function"
+
+	Compat.Log("EXECUTOR", Compat.Executor .. (Compat.Version ~= "" and (" " .. Compat.Version) or ""))
+
+	for name, available in pairs(Compat.Capabilities) do
+		Compat.Log("CAPABILITY", name .. "=" .. (available and "OK" or "MISSING"))
+	end
+end
+
+function Compat.NewDrawing(className)
+	if Compat.Capabilities.Drawing then
+		local ok, object = pcall(function()
+			return Drawing.new(className)
+		end)
+
+		if ok and object then
+			return object
+		end
+
+		Compat.WarnOnce("DrawingCreate", "Drawing.new failed. Drawing visuals will be disabled.")
+	else
+		Compat.WarnOnce("DrawingMissing", "Drawing API is unavailable. Drawing visuals will be disabled.")
+	end
+
+	local dummy = {
+		Visible = false
+	}
+
+	function dummy:Remove()
+		self.Visible = false
+	end
+
+	return dummy
+end
+
+function Compat.MouseDown()
+	if Compat.Capabilities.MousePress then
+		local ok = pcall(mouse1press)
+		if ok then return true end
+		Compat.WarnOnce("MousePressFailed", "mouse1press exists but failed.")
+	end
+
+	return false
+end
+
+function Compat.MouseUp()
+	if Compat.Capabilities.MouseRelease then
+		local ok = pcall(mouse1release)
+		if ok then return true end
+		Compat.WarnOnce("MouseReleaseFailed", "mouse1release exists but failed.")
+	end
+
+	return false
+end
+
+function Compat.Trace(label, callback, ...)
+	local args = table.pack(...)
+	local results = table.pack(xpcall(function()
+		return callback(table.unpack(args, 1, args.n))
+	end, function(err)
+		local trace = debug and debug.traceback and debug.traceback(tostring(err), 2) or tostring(err)
+		Compat.Log("ERROR", label .. " | " .. trace)
+		return trace
+	end))
+
+	if not results[1] then
+		return false, results[2]
+	end
+
+	return true, table.unpack(results, 2, results.n)
+end
+
+Compat.Detect()
+Compat.Log("BOOT", "Services initialized")
 
 pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
 for _, id in ipairs(LegacyIDs) do
@@ -563,6 +670,8 @@ end)()
 
 env.AehmreRemoteSpy = RemoteSpy
 
+
+Compat.Log("BOOT", "Initializing Farm system")
 
 local Farm = (function()
 	local FarmMoveSpeed = 22
@@ -1650,17 +1759,19 @@ local Farm = (function()
 	}
 end)()
 
+Compat.Log("BOOT", "Farm system initialized")
+
 --// Drawing Vector FOV Crosshair & Target Indicator Framework
 local FOVIdleColor = Color3.fromRGB(220, 35, 45)
 
-local FOVCircle = Drawing.new("Circle")
+local FOVCircle = Compat.NewDrawing("Circle")
 FOVCircle.Color = FOVIdleColor
 FOVCircle.Thickness = 1.5
 FOVCircle.NumSides = 64
 FOVCircle.Filled = false
 FOVCircle.Visible = false
 
-local TargetDot = Drawing.new("Circle")
+local TargetDot = Compat.NewDrawing("Circle")
 TargetDot.Color = Styles.Accent
 TargetDot.Thickness = 1
 TargetDot.Filled = true
@@ -1668,7 +1779,7 @@ TargetDot.Radius = 4
 TargetDot.Visible = false
 TargetDot.ZIndex = 2
 
-local FPSDisplay = Drawing.new("Text")
+local FPSDisplay = Compat.NewDrawing("Text")
 FPSDisplay.Text = "FPS: 0"
 FPSDisplay.Size = 16
 FPSDisplay.Position = Vector2.new(12, 12)
@@ -1677,13 +1788,13 @@ FPSDisplay.Outline = true
 FPSDisplay.Visible = false
 FPSDisplay.ZIndex = 3
 
-local WallDebugLine = Drawing.new("Line")
+local WallDebugLine = Compat.NewDrawing("Line")
 WallDebugLine.Thickness = 2
 WallDebugLine.Color = Color3.fromRGB(80, 255, 120)
 WallDebugLine.Visible = false
 WallDebugLine.ZIndex = 3
 
-local TargetInfoText = Drawing.new("Text")
+local TargetInfoText = Compat.NewDrawing("Text")
 TargetInfoText.Size = 14
 TargetInfoText.Color = Styles.Accent
 TargetInfoText.Outline = true
@@ -2081,12 +2192,14 @@ local SystemLogEvent = function(msg)
 end
 
 local function ControlClick(press)
+	local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+
 	if press then
-		if mouse1press then mouse1press()
-		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then LocalPlayer.Character:FindFirstChildOfClass("Tool"):Activate() end
+		if Compat.MouseDown() then return end
+		if tool then pcall(function() tool:Activate() end) end
 	else
-		if mouse1release then mouse1release()
-		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then LocalPlayer.Character:FindFirstChildOfClass("Tool"):Deactivate() end
+		if Compat.MouseUp() then return end
+		if tool then pcall(function() tool:Deactivate() end) end
 	end
 end
 
@@ -2805,6 +2918,8 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 	end)
 end)
 
+Compat.Log("BOOT", "Aim/ESP runtime initialized")
+
 --// UI Allocation Elements
 local MainMenuUI = nil
 local ShortcutList = nil
@@ -2985,6 +3100,8 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 		SystemLogEvent("Invisibility toggled " .. (Settings.FarmInvisibility and "ON" or "OFF") .. ".")
 	end
 end)
+
+Compat.Log("BOOT", "Input/runtime controls initialized")
 
 --// Structural Premium Interface Generation Layer
 local ScreenGui = Instance.new("ScreenGui", PlayerGui)
@@ -3730,6 +3847,8 @@ local function CinematicClose()
 	UniversalDestruct()
 end
 CloseBtn.MouseButton1Click:Connect(CinematicClose)
+
+Compat.Log("BOOT", "Main UI structure initialized")
 
 local function AddDashboardButton(parentPage, configKey, displayTitle, desc, subDesc, customCallback)
 	local state = Settings[configKey]
@@ -4731,6 +4850,8 @@ HookButtonAnimations(KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(6
 
 KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
 
+Compat.Log("BOOT", "Dashboard controls initialized")
+
 local AuthFrame = Instance.new("Frame", ScreenGui)
 AuthFrame.Name = "AccessFrame"
 AuthFrame.Size = UDim2.new(0, 390, 0, 250)
@@ -4938,6 +5059,7 @@ local function UpdateResponsiveScale()
 	end
 end
 
+Compat.Log("BOOT", "Auth UI initialized")
 UpdateResponsiveScale()
 SafeConnect(Camera:GetPropertyChangedSignal("ViewportSize"), UpdateResponsiveScale)
 
@@ -4946,3 +5068,4 @@ AuthFrame.Visible = true
 MobileControls.Visible = false
 UpdateKeybindValueButtons()
 UpdateLeftPanelShortcuts()
+Compat.Log("READY", string.format("Hub initialized in %.2fs", os.clock() - Compat.BootStarted))
