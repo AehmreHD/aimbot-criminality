@@ -1763,6 +1763,28 @@ end
 
 local KillMarkedFireAxeRunning = false
 
+local function FireAxeLog(message)
+	print("[FireAxe]", message)
+	SystemLogEvent(message)
+end
+
+local function ActivateFireAxe(axe)
+	if axe and axe:IsA("Tool") then
+		local ok = pcall(function()
+			axe:Activate()
+		end)
+
+		if ok then
+			return true
+		end
+	end
+
+	ControlClick(true)
+	task.wait(0.04)
+	ControlClick(false)
+	return true
+end
+
 local function UpdateKillMarkedFireAxeUI()
 	Settings.KillMarkedWithFireAxe = false
 
@@ -1806,7 +1828,7 @@ local function KillMarkedPlayerWithFireAxe()
 	local targetPlayer = MarkedESP.SelectedPlayer
 
 	if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
-		SystemLogEvent("Fire Axe action cancelled: no marked player selected.")
+		FireAxeLog("Fire Axe action cancelled: no marked player selected.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
@@ -1821,14 +1843,14 @@ local function KillMarkedPlayerWithFireAxe()
 	local targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
 
 	if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
-		SystemLogEvent("Fire Axe action cancelled: local character unavailable.")
+		FireAxeLog("Fire Axe action cancelled: local character unavailable.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
 	end
 
 	if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-		SystemLogEvent("Fire Axe action cancelled: marked player unavailable.")
+		FireAxeLog("Fire Axe action cancelled: marked player unavailable.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
@@ -1837,7 +1859,7 @@ local function KillMarkedPlayerWithFireAxe()
 	local axe = GetFireAxe()
 
 	if not axe then
-		SystemLogEvent("Fire Axe action cancelled: Fire Axe not found.")
+		FireAxeLog("Fire Axe action cancelled: Fire Axe not found.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
@@ -1853,15 +1875,17 @@ local function KillMarkedPlayerWithFireAxe()
 	axe = character:FindFirstChild("Fire Axe") or axe
 
 	if not axe or axe.Parent ~= character then
-		SystemLogEvent("Fire Axe action cancelled: Fire Axe could not be equipped.")
+		FireAxeLog("Fire Axe action cancelled: Fire Axe could not be equipped.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
 	end
 
-	ControlClick(true)
+	FireAxeLog("Fire Axe equipped. Starting attack before teleport.")
+	ActivateFireAxe(axe)
 
 	local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
+	FireAxeLog(string.format("Waiting %.1fs before teleport.", delayTime))
 	task.wait(delayTime)
 
 	character = LocalPlayer.Character
@@ -1873,8 +1897,7 @@ local function KillMarkedPlayerWithFireAxe()
 	targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
 
 	if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-		ControlClick(false)
-		SystemLogEvent("Fire Axe action cancelled during delay: character or target unavailable.")
+		FireAxeLog("Fire Axe action cancelled during delay: character or target unavailable.")
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
@@ -1884,10 +1907,7 @@ local function KillMarkedPlayerWithFireAxe()
 	localRoot.AssemblyLinearVelocity = Vector3.zero
 	localRoot.AssemblyAngularVelocity = Vector3.zero
 
-	task.wait(0.08)
-	ControlClick(false)
-
-	SystemLogEvent(string.format("Fire Axe action used on marked player: %s (delay %.1fs)", targetPlayer.Name, delayTime))
+	FireAxeLog(string.format("Teleported to marked player during Fire Axe attack: %s (delay %.1fs)", targetPlayer.Name, delayTime))
 
 	KillMarkedFireAxeRunning = false
 	UpdateKillMarkedFireAxeUI()
