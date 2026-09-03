@@ -1747,6 +1747,10 @@ SafeConnect(workspace.DescendantAdded, function(descendant)
 	end
 end)
 
+local SystemLogEvent = function(msg)
+	print("[Aehmre Ultimate Hub]", msg)
+end
+
 local function ControlClick(press)
 	if press then
 		if mouse1press then mouse1press()
@@ -1767,17 +1771,28 @@ local function UpdateKillMarkedFireAxeUI()
 	end
 end
 
+local function IsFireAxeTool(object)
+	if not object or not object:IsA("Tool") then return false end
+	return object.Name:gsub("%s+", ""):lower() == "fireaxe"
+end
+
+local function FindFireAxe(container)
+	if not container then return nil end
+
+	for _, object in ipairs(container:GetChildren()) do
+		if IsFireAxeTool(object) then
+			return object
+		end
+	end
+
+	return nil
+end
+
 local function GetFireAxe()
 	local character = LocalPlayer.Character
 	local backpack = LocalPlayer:FindFirstChild("Backpack")
 
-	local equipped = character and character:FindFirstChild("Fire Axe")
-	if equipped and equipped:IsA("Tool") then return equipped end
-
-	local stored = backpack and backpack:FindFirstChild("Fire Axe")
-	if stored and stored:IsA("Tool") then return stored end
-
-	return nil
+	return FindFireAxe(character) or FindFireAxe(backpack)
 end
 
 local function KillMarkedPlayerWithFireAxe()
@@ -2129,9 +2144,6 @@ local function IsTargetValid(target)
 
 	return true
 end
-
--- Temporary logger hook (defined completely lower down, stubbed here)
-local SystemLogEvent = function(msg) end
 
 --// Protected Render Loop Connection Array
 RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
