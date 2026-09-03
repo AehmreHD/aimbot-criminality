@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - JJSPLOIT CONSOLE FIX //
+-- // AEHMRE ULTIMATE HUB - JJSPLOIT STRICT DEBUG //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -333,7 +333,26 @@ local function UpdateFullbright(enabled)
 end
 
 local function SafeConnect(signal, callback)
-	local connection = signal:Connect(callback)
+	if not signal or typeof(callback) ~= "function" then
+		print("[HubDebug][CONNECT-WARN] Invalid signal/callback")
+		return nil
+	end
+
+	local connection = signal:Connect(function(...)
+		local args = table.pack(...)
+
+		local ok, err = xpcall(function()
+			callback(table.unpack(args, 1, args.n))
+		end, function(message)
+			local trace = debug and debug.traceback and debug.traceback(tostring(message), 2) or tostring(message)
+			return trace
+		end)
+
+		if not ok then
+			print("[HubDebug][EVENT-ERROR] " .. tostring(err))
+		end
+	end)
+
 	table.insert(GlobalConnections, connection)
 	return connection
 end
@@ -2276,7 +2295,7 @@ local function BindToolEquipSpy(character)
 		end
 	end
 
-	ToolEquipSpy.CharacterConnection = character.ChildAdded:Connect(function(object)
+	ToolEquipSpy.CharacterConnection = SafeConnect(character.ChildAdded, function(object)
 		if object:IsA("Tool") then
 			PrintEquippedToolSnapshot(object)
 		end
@@ -5074,3 +5093,8 @@ MobileControls.Visible = false
 UpdateKeybindValueButtons()
 UpdateLeftPanelShortcuts()
 Compat.Log("READY", string.format("Hub initialized in %.2fs", os.clock() - Compat.BootStarted))
+
+task.spawn(function()
+	task.wait(3)
+	print("[HubDebug][ALIVE] Hub runtime survived initial load.")
+end)
