@@ -1761,6 +1761,87 @@ local function ControlClick(press)
 	end
 end
 
+local ToolEquipSpy = {
+	CharacterConnection = nil,
+	BoundCharacter = nil,
+	MaxDescendants = 80
+}
+
+local function GetRelativeToolPath(tool, object)
+	local names = {}
+	local current = object
+
+	while current and current ~= tool do
+		table.insert(names, 1, current.Name)
+		current = current.Parent
+	end
+
+	return table.concat(names, ".")
+end
+
+local function PrintEquippedToolSnapshot(tool)
+	if not tool or not tool:IsA("Tool") or tool.Parent ~= LocalPlayer.Character then return end
+
+	task.delay(0.15, function()
+		if not tool or not tool.Parent or tool.Parent ~= LocalPlayer.Character then return end
+
+		local descendants = tool:GetDescendants()
+		local shown = math.min(#descendants, ToolEquipSpy.MaxDescendants)
+
+		print(string.format(
+			"[ToolEquipSpy] EQUIPPED | Name=%s | ToolTip=%s | Descendants=%d",
+			tool.Name,
+			tostring(tool.ToolTip),
+			#descendants
+		))
+
+		for index = 1, shown do
+			local object = descendants[index]
+			print(string.format(
+				"[ToolEquipSpy] %02d | %s | Class=%s",
+				index,
+				GetRelativeToolPath(tool, object),
+				object.ClassName
+			))
+		end
+
+		if #descendants > shown then
+			print(string.format(
+				"[ToolEquipSpy] ... %d more descendants hidden to avoid console spam",
+				#descendants - shown
+			))
+		end
+	end)
+end
+
+local function BindToolEquipSpy(character)
+	if ToolEquipSpy.CharacterConnection then
+		ToolEquipSpy.CharacterConnection:Disconnect()
+		ToolEquipSpy.CharacterConnection = nil
+	end
+
+	ToolEquipSpy.BoundCharacter = character
+	if not character then return end
+
+	for _, object in ipairs(character:GetChildren()) do
+		if object:IsA("Tool") then
+			PrintEquippedToolSnapshot(object)
+		end
+	end
+
+	ToolEquipSpy.CharacterConnection = character.ChildAdded:Connect(function(object)
+		if object:IsA("Tool") then
+			PrintEquippedToolSnapshot(object)
+		end
+	end)
+end
+
+BindToolEquipSpy(LocalPlayer.Character)
+
+SafeConnect(LocalPlayer.CharacterAdded, function(character)
+	task.defer(BindToolEquipSpy, character)
+end)
+
 local KillMarkedFireAxeRunning = false
 
 local function FireAxeLog(message)
@@ -1793,9 +1874,21 @@ local function UpdateKillMarkedFireAxeUI()
 	end
 end
 
+local function NormalizeToolText(value)
+	return tostring(value or ""):gsub("%s+", ""):lower()
+end
+
 local function IsFireAxeTool(object)
 	if not object or not object:IsA("Tool") then return false end
-	return object.Name:gsub("%s+", ""):lower() == "fireaxe"
+
+	local name = NormalizeToolText(object.Name)
+	local toolTip = NormalizeToolText(object.ToolTip)
+
+	return name == "fireaxe"
+		or name:find("fireaxe", 1, true) ~= nil
+		or toolTip:find("fireaxe", 1, true) ~= nil
+		or name:find("axe", 1, true) ~= nil
+		or toolTip:find("axe", 1, true) ~= nil
 end
 
 local function FindFireAxe(container)
@@ -1810,11 +1903,32 @@ local function FindFireAxe(container)
 	return nil
 end
 
+local function GetSingleEquippedTool(character)
+	if not character then return nil end
+
+	local found = nil
+
+	for _, object in ipairs(character:GetChildren()) do
+		if object:IsA("Tool") then
+			if found then
+				return nil
+			end
+
+			found = object
+		end
+	end
+
+	return found
+end
+
 local function GetFireAxe()
 	local character = LocalPlayer.Character
 	local backpack = LocalPlayer:FindFirstChild("Backpack")
 
-	return FindFireAxe(character) or FindFireAxe(backpack)
+	local namedAxe = FindFireAxe(character) or FindFireAxe(backpack)
+	if namedAxe then return namedAxe end
+
+	return GetSingleEquippedTool(character)
 end
 
 local function KillMarkedPlayerWithFireAxe()
@@ -1859,7 +1973,10 @@ local function KillMarkedPlayerWithFireAxe()
 	local axe = GetFireAxe()
 
 	if not axe then
-		FireAxeLog("Fire Axe action cancelled: Fire Axe not found.")
+		local equipped = GetSingleEquippedTool(character)
+		local equippedName = equipped and equipped.Name or "none"
+
+		FireAxeLog("Fire Axe action cancelled: Fire Axe not found. Equipped Tool=" .. equippedName)
 		KillMarkedFireAxeRunning = false
 		UpdateKillMarkedFireAxeUI()
 		return
