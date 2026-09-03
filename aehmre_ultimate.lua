@@ -1,3 +1,6 @@
+-- // (SCRIPT-NAME) //
+-- MADE BY: Emre_31er
+
 local Lighting = game:GetService("Lighting")
 
 --// Cross-Script Hot-Reload State Transfer Engine
