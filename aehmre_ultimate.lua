@@ -97,6 +97,7 @@ local Settings = {
 	TargetIndicator = true,
 	Fullbright = false,
 	ShowFPS = false,
+	EnableRemoteSpy = false,
 	WallCheckDebug = false,
 	TargetInfo = false,
 	DetectPlayers = true,
@@ -106,7 +107,6 @@ local Settings = {
 	FarmInvisibility = false,
 	InvisibilityMode = "Air",
 	FarmInvisSpeed = 12,
-	EnableRemoteSpy = false,
 	ExploitSimDamage = false,
 	ExploitSimDamageAmount = 25,
 	PanicMode = false,
@@ -234,6 +234,331 @@ local function TweenObj(obj, goal, duration, style, dir)
 	tween:Play()
 	return tween
 end
+
+local RemoteSpy = (function()
+	local State = {
+		MaxLines = 80,
+		WindowSeconds = 45,
+		LineTimes = {},
+		CallID = 0,
+		MaxStringLength = 140,
+		MaxTableItems = 10,
+		MaxTableDepth = 2
+	}
+
+	local function TrimOldLines(now)
+		local firstValid = 1
+
+		while firstValid <= #State.LineTimes and now - State.LineTimes[firstValid] >= State.WindowSeconds do
+			firstValid += 1
+		end
+
+		if firstValid > 1 then
+			local remaining = {}
+
+			for index = firstValid, #State.LineTimes do
+				remaining[#remaining + 1] = State.LineTimes[index]
+			end
+
+			State.LineTimes = remaining
+		end
+	end
+
+	local function CanEmit()
+		if not Settings.EnableRemoteSpy then return false end
+
+		local now = os.clock()
+		TrimOldLines(now)
+
+		if #State.LineTimes >= State.MaxLines then
+			return false
+		end
+
+		State.LineTimes[#State.LineTimes + 1] = now
+		return true
+	end
+
+	local function Emit(message)
+		if CanEmit() then
+			print("[RemoteSpy] " .. tostring(message))
+		end
+	end
+
+	local function SafeInstancePath(object)
+		if typeof(object) ~= "Instance" then return tostring(object) end
+
+		local ok, fullName = pcall(function()
+			return object:GetFullName()
+		end)
+
+		if ok then
+			return fullName
+		end
+
+		return object.Name
+	end
+
+	local function FormatValue(value, depth, visited)
+		local valueType = typeof(value)
+		depth = depth or 0
+		visited = visited or {}
+
+		if valueType == "nil" then return "nil" end
+		if valueType == "boolean" or valueType == "number" then return tostring(value) end
+
+		if valueType == "string" then
+			local result = value
+
+			if #result > State.MaxStringLength then
+				result = result:sub(1, State.MaxStringLength) .. "..."
+			end
+
+			return string.format("%q", result)
+		end
+
+		if valueType == "Instance" then
+			return string.format("<%s> %s", value.ClassName, SafeInstancePath(value))
+		end
+
+		if valueType == "EnumItem" then
+			return tostring(value)
+		end
+
+		if valueType == "Vector2" then
+			return string.format("Vector2(%.2f, %.2f)", value.X, value.Y)
+		end
+
+		if valueType == "Vector3" then
+			return string.format("Vector3(%.2f, %.2f, %.2f)", value.X, value.Y, value.Z)
+		end
+
+		if valueType == "CFrame" then
+			local position = value.Position
+			return string.format("CFrame(Position=%.2f, %.2f, %.2f)", position.X, position.Y, position.Z)
+		end
+
+		if valueType == "Color3" then
+			return string.format("Color3(%.3f, %.3f, %.3f)", value.R, value.G, value.B)
+		end
+
+		if valueType == "UDim2" then
+			return tostring(value)
+		end
+
+		if valueType == "table" then
+			if visited[value] then return "<recursive table>" end
+			if depth >= State.MaxTableDepth then return "{...}" end
+
+			visited[value] = true
+
+			local entries = {}
+			local count = 0
+
+			for key, item in pairs(value) do
+				count += 1
+
+				if count > State.MaxTableItems then
+					entries[#entries + 1] = "..."
+					break
+				end
+
+				entries[#entries + 1] = string.format(
+					"[%s]=%s",
+					FormatValue(key, depth + 1, visited),
+					FormatValue(item, depth + 1, visited)
+				)
+			end
+
+			visited[value] = nil
+			return "{" .. table.concat(entries, ", ") .. "}"
+		end
+
+		return string.format("<%s> %s", valueType, tostring(value))
+	end
+
+	local function LogCall(remote, method, args)
+		if not Settings.EnableRemoteSpy then return end
+
+		State.CallID += 1
+		local id = State.CallID
+		local remotePath = SafeInstancePath(remote)
+		local remoteClass = remote and remote.ClassName or "Unknown"
+
+		Emit(string.format(
+			"#%d %s | %s | Class=%s | Args=%d",
+			id,
+			method,
+			remotePath,
+			remoteClass,
+			args.n
+		))
+
+		for index = 1, args.n do
+			if not Settings.EnableRemoteSpy then break end
+
+			Emit(string.format(
+				"#%d ARG[%d] | Type=%s | %s",
+				id,
+				index,
+				typeof(args[index]),
+				FormatValue(args[index])
+			))
+		end
+	end
+
+	local function LogReturns(id, packedReturns)
+		if not Settings.EnableRemoteSpy then return end
+
+		for index = 1, packedReturns.n do
+			Emit(string.format(
+				"#%d RETURN[%d] | Type=%s | %s",
+				id,
+				index,
+				typeof(packedReturns[index]),
+				FormatValue(packedReturns[index])
+			))
+		end
+	end
+
+	local function Fire(remote, ...)
+		if not remote or not remote:IsA("RemoteEvent") then
+			Emit("Fire blocked: invalid RemoteEvent")
+			return nil
+		end
+
+		local args = table.pack(...)
+		LogCall(remote, "FireServer", args)
+		return remote:FireServer(table.unpack(args, 1, args.n))
+	end
+
+	local function Invoke(remote, ...)
+		if not remote or not remote:IsA("RemoteFunction") then
+			Emit("Invoke blocked: invalid RemoteFunction")
+			return nil
+		end
+
+		local args = table.pack(...)
+		State.CallID += 1
+		local id = State.CallID
+
+		if Settings.EnableRemoteSpy then
+			local remotePath = SafeInstancePath(remote)
+			Emit(string.format(
+				"#%d InvokeServer | %s | Class=%s | Args=%d",
+				id,
+				remotePath,
+				remote.ClassName,
+				args.n
+			))
+
+			for index = 1, args.n do
+				Emit(string.format(
+					"#%d ARG[%d] | Type=%s | %s",
+					id,
+					index,
+					typeof(args[index]),
+					FormatValue(args[index])
+				))
+			end
+		end
+
+		local packedReturns = table.pack(remote:InvokeServer(table.unpack(args, 1, args.n)))
+		LogReturns(id, packedReturns)
+
+		return table.unpack(packedReturns, 1, packedReturns.n)
+	end
+
+	local function ResetWindow()
+		State.LineTimes = {}
+		State.CallID = 0
+	end
+
+	local function PrintStatus()
+		if not Settings.EnableRemoteSpy then return end
+
+		Emit(string.format(
+			"ENABLED | Hub-owned remotes only | Limit=%d lines / %ds",
+			State.MaxLines,
+			State.WindowSeconds
+		))
+	end
+
+	local IncomingConnections = {}
+	local DescendantConnection = nil
+
+	local function DisconnectIncoming()
+		for remote, connection in pairs(IncomingConnections) do
+			if connection then
+				pcall(function() connection:Disconnect() end)
+			end
+			IncomingConnections[remote] = nil
+		end
+
+		if DescendantConnection then
+			DescendantConnection:Disconnect()
+			DescendantConnection = nil
+		end
+	end
+
+	local function WatchIncomingRemote(remote)
+		if not remote or not remote:IsA("RemoteEvent") or IncomingConnections[remote] then return end
+
+		IncomingConnections[remote] = remote.OnClientEvent:Connect(function(...)
+			if not Settings.EnableRemoteSpy then return end
+
+			local args = table.pack(...)
+			State.CallID += 1
+			local id = State.CallID
+
+			Emit(string.format(
+				"#%d OnClientEvent | %s | Class=%s | Args=%d",
+				id,
+				SafeInstancePath(remote),
+				remote.ClassName,
+				args.n
+			))
+
+			for index = 1, args.n do
+				Emit(string.format(
+					"#%d ARG[%d] | Type=%s | %s",
+					id,
+					index,
+					typeof(args[index]),
+					FormatValue(args[index])
+				))
+			end
+		end)
+	end
+
+	local function EnableIncomingSpy()
+		DisconnectIncoming()
+
+		for _, object in ipairs(game:GetDescendants()) do
+			if object:IsA("RemoteEvent") then
+				WatchIncomingRemote(object)
+			end
+		end
+
+		DescendantConnection = game.DescendantAdded:Connect(function(object)
+			if object:IsA("RemoteEvent") then
+				WatchIncomingRemote(object)
+			end
+		end)
+	end
+
+	local API = {
+		Fire = Fire,
+		Invoke = Invoke,
+		ResetWindow = ResetWindow,
+		PrintStatus = PrintStatus,
+		EnableIncomingSpy = EnableIncomingSpy,
+		DisableIncomingSpy = DisconnectIncoming
+	}
+
+	return API
+end)()
+
+env.AehmreRemoteSpy = RemoteSpy
 
 
 local Farm = (function()
@@ -494,15 +819,15 @@ local Farm = (function()
 		local buyRemote = events:FindFirstChild("SSHPRMTE1")
 		if not openRemote or not buyRemote then return false end
 		pcall(function()
-			openRemote:FireServer(true, "shop", mainPart, "IllegalStore")
+			RemoteSpy.Fire(openRemote, true, "shop", mainPart, "IllegalStore")
 		end)
 		task.wait(0.8)
 		pcall(function()
-			buyRemote:InvokeServer("IllegalStore", "Melees", "Crowbar", mainPart, nil, true)
+			RemoteSpy.Invoke(buyRemote, "IllegalStore", "Melees", "Crowbar", mainPart, nil, true)
 		end)
 		task.wait(2)
 		pcall(function()
-			openRemote:FireServer(false)
+			RemoteSpy.Fire(openRemote, false)
 		end)
 		task.wait(0.5)
 		FarmStatus = "Idle"
@@ -534,11 +859,11 @@ local Farm = (function()
 			local arm = character and (character:FindFirstChild("Right Arm") or character:FindFirstChild("RightHand"))
 			if not crowbar or not arm then return false end
 			local success, result = pcall(function()
-				return remote1:InvokeServer("🍞", tick(), crowbar, "DZDRRRKI", targetObject, "Register")
+				return RemoteSpy.Invoke(remote1, "🍞", tick(), crowbar, "DZDRRRKI", targetObject, "Register")
 			end)
 			if success and result then
 				pcall(function()
-					remote2:FireServer("🍞", tick(), crowbar, "2389ZFX34", result, false, arm, mainPart, targetObject, mainPart.Position, mainPart.Position)
+					RemoteSpy.Fire(remote2, "🍞", tick(), crowbar, "2389ZFX34", result, false, arm, mainPart, targetObject, mainPart.Position, mainPart.Position)
 				end)
 				hits += 1
 			end
@@ -573,7 +898,7 @@ local Farm = (function()
 			if not Settings.FarmEnabled then break end
 			if money.Parent and MoveToFarmTarget(money) then
 				pcall(function()
-					pickupRemote:FireServer(money)
+					RemoteSpy.Fire(pickupRemote, money)
 				end)
 				task.wait(0.2)
 			end
@@ -657,7 +982,7 @@ local Farm = (function()
 					end
 					if nearest then
 						pcall(function()
-							pickupRemote:FireServer(nearest)
+							RemoteSpy.Fire(pickupRemote, nearest)
 						end)
 						task.wait(0.35)
 					else
@@ -2050,7 +2375,7 @@ local function ExploitSimHitTarget(target)
 	local remote = GetExploitSimHitRemote()
 	if not remote then return false end
 
-	remote:FireServer(target, Settings.ExploitSimDamageAmount)
+	RemoteSpy.Fire(remote, target, Settings.ExploitSimDamageAmount)
 	return true
 end
 
@@ -2071,6 +2396,16 @@ local function UniversalDestruct()
 	pcall(function()
 		if OffscreenOverlay then OffscreenOverlay:Destroy() end
 	end)
+	pcall(function()
+		if RemoteSpy and RemoteSpy.DisableIncomingSpy then
+			RemoteSpy.DisableIncomingSpy()
+		end
+	end)
+
+	if env.AehmreRemoteSpy == RemoteSpy then
+		env.AehmreRemoteSpy = nil
+	end
+
 	UpdateFullbright(false)
 	Farm.Cleanup()
 	WispAllESPRemnants()
@@ -4227,6 +4562,19 @@ end)
 AddDashboardSlider(VisPage, "FarmESPTextSize", "Farm ESP Text Size", 10, 40, "Controls the Safe/Register ESP label size.", "No movement-speed control is included.", function(value)
 	Settings.FarmESPTextSize = math.floor(value + 0.5)
 end, 0)
+
+AddDashboardButton(CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ultimate Hub remote calls plus incoming RemoteEvent traffic.", "80 console lines per 45 seconds. Shared API is exposed as getgenv().AehmreRemoteSpy / shared.AehmreRemoteSpy.", function(enabled)
+	RemoteSpy.ResetWindow()
+
+	if enabled then
+		RemoteSpy.EnableIncomingSpy()
+		RemoteSpy.PrintStatus()
+		print("[RemoteSpy] Shared API ready: env.AehmreRemoteSpy.Fire / Invoke")
+	else
+		RemoteSpy.DisableIncomingSpy()
+		print("[RemoteSpy] DISABLED")
+	end
+end)
 
 local CycleColorBtn = Instance.new("TextButton", CustPage)
 CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
