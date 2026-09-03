@@ -1,5 +1,8 @@
--- // AEHMRE ULTIMATE HUB - JJSPLOIT RECOVERY //
+-- // JJSPLOIT BASIC TEST //
 -- MADE BY: Emre_31er
+
+print("[TEST] Lua running")
+
 print("[HubRecovery] SCRIPT STARTED")
 local Lighting = game:GetService("Lighting")
 
