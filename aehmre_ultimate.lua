@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - JJSPLOIT REGISTER REFACTOR //
+-- // AEHMRE ULTIMATE HUB - JJSPLOIT SYNTAX FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -112,10 +112,10 @@ UI.BootLabel.Parent = UI.BootGui
 Instance.new("UICorner", UI.BootLabel).CornerRadius = UDim.new(0, 8)
 
 local function SetBootStatus(message)
-\tif UI.BootLabel and UI.BootLabel.Parent then
-\t\tUI.BootLabel.Text = "Aehmre Ultimate Hub\n" .. tostring(message)
-\tend
-\tprint("[HubBoot] " .. tostring(message))
+	if UI.BootLabel and UI.BootLabel.Parent then
+	\tUI.BootLabel.Text = "Aehmre Ultimate Hub\n" .. tostring(message)
+	end
+	print("[HubBoot] " .. tostring(message))
 end
 
 SetBootStatus("Loading systems...")
@@ -5128,11 +5128,11 @@ UpdateKeybindValueButtons()
 UpdateLeftPanelShortcuts()
 SetBootStatus("Ready")
 task.defer(function()
-\ttask.wait(0.15)
-\tif UI.BootGui then
-\t\tUI.BootGui:Destroy()
-\t\tUI.BootGui = nil
-\t\tUI.BootLabel = nil
-\tend
+	task.wait(0.15)
+	if UI.BootGui then
+	\tUI.BootGui:Destroy()
+	\tUI.BootGui = nil
+	\tUI.BootLabel = nil
+	end
 end)
 Compat.Log("READY", string.format("Hub initialized in %.2fs", os.clock() - Compat.BootStarted))
