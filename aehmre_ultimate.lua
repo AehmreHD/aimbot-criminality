@@ -104,6 +104,9 @@ local Settings = {
 	FarmInvisibility = false,
 	InvisibilityMode = "Air",
 	FarmInvisSpeed = 12,
+	ExploitSimDamage = false,
+	ExploitSimDamageAmount = 25,
+	PanicMode = false,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -133,6 +136,8 @@ if SavedState and SavedState.Settings then
 end
 
 local UIUpdaters = {}
+local ConfigUIUpdaters = {}
+local UpdateLeftPanelShortcuts = function() end
 
 local Aiming = false
 local Target = nil
@@ -242,6 +247,12 @@ local Farm = (function()
 	local FarmInvisParts = {}
 	local FarmSafeESPRunning = false
 	local FarmSafeESPElements = {}
+	local FarmPanicHealthConnection = nil
+	local FarmPanicDiedConnection = nil
+	local FarmPanicCharacterConnection = nil
+	local FarmPanicBoundCharacter = nil
+	local FarmPanicTriggeredForLife = false
+	local FarmPanicActivatedInvisibility = false
 	local FarmProcessed = {}
 	local FarmTempIgnored = {}
 	local FarmFolderCache = nil
@@ -1064,6 +1075,130 @@ local Farm = (function()
 		FarmLog("Invisibility enabled (Air)")
 	end
 
+	local function RefreshFarmInvisibilityUI()
+		if ConfigUIUpdaters.FarmInvisibility then
+			ConfigUIUpdaters.FarmInvisibility()
+		end
+
+		UpdateLeftPanelShortcuts()
+	end
+
+	local function TriggerFarmPanicInvisibility()
+		if FarmPanicTriggeredForLife then return end
+
+		FarmPanicTriggeredForLife = true
+
+		if Settings.FarmInvisibility then
+			FarmLog("PanicMode triggered, invisibility was already enabled")
+			return
+		end
+
+		Settings.FarmInvisibility = true
+		FarmPanicActivatedInvisibility = true
+		EnableFarmInvisibility()
+
+		if not Settings.FarmInvisibility then
+			FarmPanicActivatedInvisibility = false
+			FarmLog("PanicMode could not enable invisibility")
+		else
+			FarmLog("PanicMode triggered below 15 HP")
+		end
+
+		RefreshFarmInvisibilityUI()
+	end
+
+	local function CheckFarmPanicHealth(humanoid)
+		if not Settings.PanicMode or FarmPanicTriggeredForLife then return end
+		if not humanoid or humanoid.Health <= 0 then return end
+
+		if humanoid.Health < 15 then
+			TriggerFarmPanicInvisibility()
+		end
+	end
+
+	local function DisconnectFarmPanicHumanoid()
+		if FarmPanicHealthConnection then
+			FarmPanicHealthConnection:Disconnect()
+			FarmPanicHealthConnection = nil
+		end
+
+		if FarmPanicDiedConnection then
+			FarmPanicDiedConnection:Disconnect()
+			FarmPanicDiedConnection = nil
+		end
+
+		FarmPanicBoundCharacter = nil
+	end
+
+	local function BindFarmPanicCharacter(character)
+		DisconnectFarmPanicHumanoid()
+		if not Settings.PanicMode or not character then return end
+
+		local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+		if not humanoid then return end
+
+		FarmPanicBoundCharacter = character
+
+		FarmPanicHealthConnection = humanoid.HealthChanged:Connect(function()
+			CheckFarmPanicHealth(humanoid)
+		end)
+
+		FarmPanicDiedConnection = humanoid.Died:Connect(function()
+			FarmLog("PanicMode detected death, waiting for respawn")
+		end)
+
+		CheckFarmPanicHealth(humanoid)
+	end
+
+	local function EnsureFarmPanicRespawnConnection()
+		if FarmPanicCharacterConnection then return end
+
+		FarmPanicCharacterConnection = LocalPlayer.CharacterAdded:Connect(function(character)
+			FarmPanicTriggeredForLife = false
+
+			if FarmPanicActivatedInvisibility then
+				FarmPanicActivatedInvisibility = false
+				DisableFarmInvisibility()
+				RefreshFarmInvisibilityUI()
+			end
+
+			if Settings.PanicMode then
+				task.defer(BindFarmPanicCharacter, character)
+			else
+				DisconnectFarmPanicHumanoid()
+			end
+		end)
+	end
+
+	local function EnableFarmPanicMode()
+		Settings.PanicMode = true
+		EnsureFarmPanicRespawnConnection()
+
+		local character = LocalPlayer.Character
+		if character ~= FarmPanicBoundCharacter then
+			BindFarmPanicCharacter(character)
+		else
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			CheckFarmPanicHealth(humanoid)
+		end
+
+		FarmLog("PanicMode enabled")
+	end
+
+	local function DisableFarmPanicMode(fullCleanup)
+		Settings.PanicMode = false
+		DisconnectFarmPanicHumanoid()
+
+		if fullCleanup and FarmPanicCharacterConnection then
+			FarmPanicCharacterConnection:Disconnect()
+			FarmPanicCharacterConnection = nil
+			FarmPanicTriggeredForLife = false
+			FarmPanicActivatedInvisibility = false
+		end
+
+		FarmLog("PanicMode disabled")
+	end
+
 	local function ClearFarmSafeESP()
 		for object, data in pairs(FarmSafeESPElements) do
 			pcall(function()
@@ -1157,7 +1292,9 @@ local Farm = (function()
 		Settings.FarmEnabled = false
 		Settings.FarmAutoMoney = false
 		Settings.FarmSafeESP = false
+		Settings.PanicMode = false
 		DisableFarmAntiAFK()
+		DisableFarmPanicMode(true)
 		DisableFarmInvisibility()
 		ClearFarmSafeESP()
 	end
@@ -1171,6 +1308,8 @@ local Farm = (function()
 		DisableAntiAFK = DisableFarmAntiAFK,
 		EnableInvisibility = EnableFarmInvisibility,
 		DisableInvisibility = DisableFarmInvisibility,
+		EnablePanicMode = EnableFarmPanicMode,
+		DisablePanicMode = DisableFarmPanicMode,
 		EnableSafeESP = EnableFarmSafeESP,
 		DisableSafeESP = DisableFarmSafeESP,
 		Cleanup = FarmCleanup,
@@ -1608,12 +1747,35 @@ end)
 
 local function ControlClick(press)
 	if press then
-		if mouse1press then mouse1press() 
+		if mouse1press then mouse1press()
 		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then LocalPlayer.Character:FindFirstChildOfClass("Tool"):Activate() end
 	else
-		if mouse1release then mouse1release() 
+		if mouse1release then mouse1release()
 		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then LocalPlayer.Character:FindFirstChildOfClass("Tool"):Deactivate() end
 	end
+end
+
+local function GetExploitSimHitRemote()
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local remote = remotes and remotes:FindFirstChild("ExploitHit")
+	if remote and remote:IsA("RemoteEvent") then return remote end
+	return nil
+end
+
+local function ExploitSimHitTarget(target)
+	if not Settings.ExploitSimDamage then return false end
+	if not target or target == LocalPlayer or not target:IsA("Player") then return false end
+
+	local character = target.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and GetCharacterRoot(character)
+	if not humanoid or humanoid.Health <= 0 or not root then return false end
+
+	local remote = GetExploitSimHitRemote()
+	if not remote then return false end
+
+	remote:FireServer(target, Settings.ExploitSimDamageAmount)
+	return true
 end
 
 --// Structural Execution Lifecycle Cleanup Core
@@ -1720,6 +1882,7 @@ local function HasLineOfSight(character, targetPart)
 end
 
 local function IsTargetVisible(character, targetPart)
+	if Settings.ExploitSimDamage then return true end
 	if not Settings.WallCheck then return true end
 	return HasLineOfSight(character, targetPart)
 end
@@ -1772,7 +1935,7 @@ local function GetClosestTarget()
 		if screenDistance > Settings.FOVRadius then return end
 
 		local hasLineOfSight = HasLineOfSight(character, targetPart)
-		local visible = not Settings.WallCheck or hasLineOfSight
+		local visible = Settings.ExploitSimDamage or not Settings.WallCheck or hasLineOfSight
 
 		if screenDistance < closestDebugDistance then
 			closestDebugDistance = screenDistance
@@ -1995,10 +2158,19 @@ RunService:BindToRenderStep("AimLockCameraUpdate", Enum.RenderPriority.Camera.Va
 						task.spawn(function()
 							local rate = FireRates[Settings.ShootMode] or FireRates.Normal
 							while Aiming and Target and Settings.AutoShoot do
-								ControlClick(true)
+								if Settings.ExploitSimDamage and Target:IsA("Player") then
+									ExploitSimHitTarget(Target)
+								else
+									ControlClick(true)
+								end
+
 								task.wait(rate.press)
 								if not (Aiming and Target and Settings.AutoShoot) then break end
-								ControlClick(false)
+
+								if not Settings.ExploitSimDamage then
+									ControlClick(false)
+								end
+
 								task.wait(rate.release)
 							end
 							ControlClick(false)
@@ -2065,7 +2237,7 @@ local function UpdateMobileControlButtons()
 	end
 end
 
-local function UpdateLeftPanelShortcuts()
+UpdateLeftPanelShortcuts = function()
 	if ShortcutList then
 		local statusText = Aiming and "ON" or "OFF"
 
@@ -2882,6 +3054,10 @@ end
 SystemLogEvent("Engine Core Initialized Successfully.")
 Farm.SetLogHook(SystemLogEvent)
 
+if Settings.PanicMode then
+	Farm.EnablePanicMode()
+end
+
 Tabs["Aim Lock"].Page.Visible = true
 Tabs["Aim Lock"].Btn.TextColor3 = Styles.TextMain
 Tabs["Aim Lock"].Btn.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
@@ -3010,12 +3186,14 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 		end
 	end)
 
-	-- Hook for Defaults System Reset Update
-	table.insert(UIUpdaters, function()
+	local function UpdateToggleFromSetting()
 		local current = Settings[configKey]
 		TweenObj(ToggleHousing, { BackgroundColor3 = current and Styles.Accent or Color3.fromRGB(40, 42, 52) }, 0.25, Enum.EasingStyle.Quint)
 		TweenObj(ToggleCore, { Position = current and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7) }, 0.25, Enum.EasingStyle.Quint)
-	end)
+	end
+
+	ConfigUIUpdaters[configKey] = UpdateToggleFromSetting
+	table.insert(UIUpdaters, UpdateToggleFromSetting)
 end
 
 local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max, desc, subDesc, customCallback, decimalPlaces)
@@ -3714,6 +3892,22 @@ end)
 AddDashboardSlider(FarmPage, "FarmInvisSpeed", "Invisibility Speed", 1, 40, "Controls movement speed while invisibility is active.", "12 is the default speed.", function(value)
 	Settings.FarmInvisSpeed = math.floor(value + 0.5)
 end, 0)
+
+AddDashboardButton(FarmPage, "ExploitSimDamage", "Exploit Simulator Damage", "Uses your own game's ReplicatedStorage.Remotes.ExploitHit RemoteEvent.", "When enabled, WallCheck is ignored for simulator damage so Bottom targets can still be hit.", function()
+	Target = nil
+end)
+
+AddDashboardSlider(FarmPage, "ExploitSimDamageAmount", "Exploit Sim Damage", 1, 100, "Damage requested from your own simulator server.", "The server still validates and clamps the value.", function(value)
+	Settings.ExploitSimDamageAmount = math.floor(value + 0.5)
+end, 0)
+
+AddDashboardButton(FarmPage, "PanicMode", "PanicMode", "Automatically enables the selected Invisibility Mode when your health drops below 15 HP.", "Triggers once per life. Invisibility stays enabled until you disable it manually or respawn.", function(enabled)
+	if enabled then
+		Farm.EnablePanicMode()
+	else
+		Farm.DisablePanicMode()
+	end
+end)
 
 AddDashboardButton(FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle kick while enabled.", "Uses one Idled connection instead of a frame loop.", function(enabled)
 	if enabled then Farm.EnableAntiAFK() else Farm.DisableAntiAFK() end
