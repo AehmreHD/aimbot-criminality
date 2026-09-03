@@ -106,6 +106,7 @@ local Settings = {
 	FarmInvisibility = false,
 	InvisibilityMode = "Air",
 	FarmInvisSpeed = 12,
+	EnableRemoteSpy = false,
 	ExploitSimDamage = false,
 	ExploitSimDamageAmount = 25,
 	PanicMode = false,
