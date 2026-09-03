@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - JJSPLOIT SYNTAX FIX //
+-- // AEHMRE ULTIMATE HUB - SYNTAX AUDIT FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -113,7 +113,7 @@ Instance.new("UICorner", UI.BootLabel).CornerRadius = UDim.new(0, 8)
 
 local function SetBootStatus(message)
 	if UI.BootLabel and UI.BootLabel.Parent then
-	\tUI.BootLabel.Text = "Aehmre Ultimate Hub\n" .. tostring(message)
+		UI.BootLabel.Text = "Aehmre Ultimate Hub\n" .. tostring(message)
 	end
 	print("[HubBoot] " .. tostring(message))
 end
@@ -548,7 +548,7 @@ local RemoteSpy = (function()
 			remotePath,
 			remoteClass,
 			args.n
-		))
+			))
 
 		for index = 1, args.n do
 			if not Settings.EnableRemoteSpy then break end
@@ -559,7 +559,7 @@ local RemoteSpy = (function()
 				index,
 				typeof(args[index]),
 				FormatValue(args[index])
-			))
+				))
 		end
 	end
 
@@ -573,7 +573,7 @@ local RemoteSpy = (function()
 				index,
 				typeof(packedReturns[index]),
 				FormatValue(packedReturns[index])
-			))
+				))
 		end
 	end
 
@@ -606,7 +606,7 @@ local RemoteSpy = (function()
 				remotePath,
 				remote.ClassName,
 				args.n
-			))
+				))
 
 			for index = 1, args.n do
 				Emit(string.format(
@@ -615,7 +615,7 @@ local RemoteSpy = (function()
 					index,
 					typeof(args[index]),
 					FormatValue(args[index])
-				))
+					))
 			end
 		end
 
@@ -637,7 +637,7 @@ local RemoteSpy = (function()
 			"ENABLED | Hub-owned remotes only | Limit=%d lines / %ds",
 			State.MaxLines,
 			State.WindowSeconds
-		))
+			))
 	end
 
 	local IncomingConnections = {}
@@ -673,7 +673,7 @@ local RemoteSpy = (function()
 				SafeInstancePath(remote),
 				remote.ClassName,
 				args.n
-			))
+				))
 
 			for index = 1, args.n do
 				Emit(string.format(
@@ -682,7 +682,7 @@ local RemoteSpy = (function()
 					index,
 					typeof(args[index]),
 					FormatValue(args[index])
-				))
+					))
 			end
 		end)
 	end
@@ -1213,7 +1213,7 @@ local Farm = (function()
 	local function EnsureFarmInvisWarning()
 		if FarmInvisWarningGui and FarmInvisWarningGui.Parent then return end
 
-		FarmInvisWarningGui = Instance.new("UI.ScreenGui")
+		FarmInvisWarningGui = Instance.new("ScreenGui")
 		FarmInvisWarningGui.Name = "AehmreInvisWarningGUI"
 		FarmInvisWarningGui.ResetOnSpawn = false
 		FarmInvisWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -1420,7 +1420,7 @@ local Farm = (function()
 
 			pcall(function()
 				game:GetService("StarterGui"):SetCore("SendNotification", {
-					UI.Title = "Invisibility unavailable",
+					Title = "Invisibility unavailable",
 					Text = "R6 avatar required",
 					Duration = 5
 				})
@@ -3162,7 +3162,7 @@ Compat.Log("BOOT", "Input/runtime controls initialized")
 SetBootStatus("Building main UI...")
 
 --// Structural Premium Interface Generation Layer
-UI.ScreenGui = Instance.new("UI.ScreenGui", PlayerGui)
+UI.ScreenGui = Instance.new("ScreenGui", PlayerGui)
 UI.ScreenGui.Name = CurrentScriptID
 UI.ScreenGui.ResetOnSpawn = false
 UI.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -5130,9 +5130,9 @@ SetBootStatus("Ready")
 task.defer(function()
 	task.wait(0.15)
 	if UI.BootGui then
-	\tUI.BootGui:Destroy()
-	\tUI.BootGui = nil
-	\tUI.BootLabel = nil
+		UI.BootGui:Destroy()
+		UI.BootGui = nil
+		UI.BootLabel = nil
 	end
 end)
 Compat.Log("READY", string.format("Hub initialized in %.2fs", os.clock() - Compat.BootStarted))
