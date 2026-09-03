@@ -2816,20 +2816,22 @@ MobileMenuButton.Activated:Connect(function()
 	ToggleMainMenu()
 end)
 
-local mobileDragging = false
-local mobileDragInput = nil
-local mobileDragStart = nil
-local mobileStartPosition = nil
+local MobileDragState = {
+	Dragging = false,
+	Input = nil,
+	Start = nil,
+	StartPosition = nil
+}
 
 MobileDragHandle.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		mobileDragging = true
-		mobileDragStart = input.Position
-		mobileStartPosition = MobileControls.Position
+		MobileDragState.Dragging = true
+		MobileDragState.Start = input.Position
+		MobileDragState.StartPosition = MobileControls.Position
 
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				mobileDragging = false
+				MobileDragState.Dragging = false
 			end
 		end)
 	end
@@ -2837,18 +2839,20 @@ end)
 
 MobileDragHandle.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-		mobileDragInput = input
+		MobileDragState.Input = input
 	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == mobileDragInput and mobileDragging then
-		local delta = input.Position - mobileDragStart
+	if input == MobileDragState.Input and MobileDragState.Dragging then
+		local delta = input.Position - MobileDragState.Start
+		local startPosition = MobileDragState.StartPosition
+
 		MobileControls.Position = UDim2.new(
-			mobileStartPosition.X.Scale,
-			mobileStartPosition.X.Offset + delta.X,
-			mobileStartPosition.Y.Scale,
-			mobileStartPosition.Y.Offset + delta.Y
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
 		)
 	end
 end)
@@ -2865,34 +2869,54 @@ HeaderBar.BackgroundColor3 = Styles.SidebarBg
 HeaderBar.BackgroundTransparency = Settings.MenuTransparency
 HeaderBar.BorderSizePixel = 0
 
-local dragging, dragInput, dragStart, startPos
-local targetPos = MainFrame.Position
+local MainDragState = {
+	Dragging = false,
+	Input = nil,
+	Start = nil,
+	StartPosition = nil,
+	TargetPosition = MainFrame.Position
+}
 
 HeaderBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true 
-		dragStart = input.Position 
-		startPos = MainFrame.Position
-		targetPos = startPos
-		input.Changed:Connect(function() 
-			if input.UserInputState == Enum.UserInputState.End then dragging = false end 
+		MainDragState.Dragging = true
+		MainDragState.Start = input.Position
+		MainDragState.StartPosition = MainFrame.Position
+		MainDragState.TargetPosition = MainDragState.StartPosition
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				MainDragState.Dragging = false
+			end
 		end)
 	end
 end)
 
-HeaderBar.InputChanged:Connect(function(input) 
-	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end 
+HeaderBar.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		MainDragState.Input = input
+	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == dragInput and dragging then
-		local delta = input.Position - dragStart
-		targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	if input == MainDragState.Input and MainDragState.Dragging then
+		local delta = input.Position - MainDragState.Start
+		local startPosition = MainDragState.StartPosition
+
+		MainDragState.TargetPosition = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
 	end
 end)
 
 SafeConnect(RunService.RenderStepped, function(dt)
-	if MainFrame.Position ~= targetPos then MainFrame.Position = MainFrame.Position:Lerp(targetPos, math.clamp(dt * 12, 0, 1)) end
+	local targetPosition = MainDragState.TargetPosition
+	if MainFrame.Position ~= targetPosition then
+		MainFrame.Position = MainFrame.Position:Lerp(targetPosition, math.clamp(dt * 12, 0, 1))
+	end
 end)
 
 local Title = Instance.new("TextLabel", HeaderBar)
@@ -4335,20 +4359,22 @@ AuthStatus.TextColor3 = Styles.TextDark
 HookButtonAnimations(CopyDiscordBtn, Styles.Accent, Styles.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.15))
 HookButtonAnimations(IgnoreBtn, Styles.CardBg, Styles.CardHover)
 
-local authDragging = false
-local authDragInput = nil
-local authDragStart = nil
-local authStartPos = nil
+local AuthDragState = {
+	Dragging = false,
+	Input = nil,
+	Start = nil,
+	StartPosition = nil
+}
 
 AuthHeader.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		authDragging = true
-		authDragStart = input.Position
-		authStartPos = AuthFrame.Position
+		AuthDragState.Dragging = true
+		AuthDragState.Start = input.Position
+		AuthDragState.StartPosition = AuthFrame.Position
 
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				authDragging = false
+				AuthDragState.Dragging = false
 			end
 		end)
 	end
@@ -4356,18 +4382,20 @@ end)
 
 AuthHeader.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		authDragInput = input
+		AuthDragState.Input = input
 	end
 end)
 
 SafeConnect(UserInputService.InputChanged, function(input)
-	if input == authDragInput and authDragging then
-		local delta = input.Position - authDragStart
+	if input == AuthDragState.Input and AuthDragState.Dragging then
+		local delta = input.Position - AuthDragState.Start
+		local startPosition = AuthDragState.StartPosition
+
 		AuthFrame.Position = UDim2.new(
-			authStartPos.X.Scale,
-			authStartPos.X.Offset + delta.X,
-			authStartPos.Y.Scale,
-			authStartPos.Y.Offset + delta.Y
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
 		)
 	end
 end)
