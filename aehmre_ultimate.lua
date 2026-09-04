@@ -238,7 +238,7 @@ end
 local Settings = {
 	Enabled = true,
 	WallCheck = true,
-	AutoShoot = true,
+	AutoShoot = false,
 	ESPEnabled = true,
 	ShowMarkedPlayerESP = false,
 	KillMarkedWithFireAxe = false,
