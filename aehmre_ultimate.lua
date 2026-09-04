@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - NOCLIP FULL FIX //
+-- // AEHMRE ULTIMATE HUB - MOUSE UNLOCK M FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -270,6 +270,7 @@ local Settings = {
 	Noclip = false,
 	NoclipSpeed = 30,
 	NoclipToggleKey = Enum.KeyCode.U,
+	MouseUnlockKey = Enum.KeyCode.M,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -2717,6 +2718,92 @@ if Settings.Noclip then
 	NoclipSystem.Enable()
 end
 
+
+UI.MouseUnlockGui = Instance.new("ScreenGui")
+UI.MouseUnlockGui.Name = "AehmreMouseUnlockGui"
+UI.MouseUnlockGui.ResetOnSpawn = false
+UI.MouseUnlockGui.IgnoreGuiInset = true
+UI.MouseUnlockGui.DisplayOrder = 1000001
+UI.MouseUnlockGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+UI.MouseUnlockGui.Parent = PlayerGui
+
+UI.MouseUnlockButton = Instance.new("TextButton")
+UI.MouseUnlockButton.Name = "MouseUnlockModal"
+UI.MouseUnlockButton.Size = UDim2.fromOffset(1, 1)
+UI.MouseUnlockButton.Position = UDim2.fromOffset(0, 0)
+UI.MouseUnlockButton.BackgroundTransparency = 1
+UI.MouseUnlockButton.TextTransparency = 1
+UI.MouseUnlockButton.Text = ""
+UI.MouseUnlockButton.BorderSizePixel = 0
+UI.MouseUnlockButton.AutoButtonColor = false
+UI.MouseUnlockButton.Active = true
+UI.MouseUnlockButton.Selectable = false
+UI.MouseUnlockButton.Visible = true
+UI.MouseUnlockButton.Modal = false
+UI.MouseUnlockButton.Parent = UI.MouseUnlockGui
+
+UI.MouseUnlockState = {
+	Unlocked = false,
+	PreviousMouseBehavior = nil,
+	PreviousMouseIconEnabled = nil
+}
+
+UI.SetMouseUnlocked = function(unlocked)
+	unlocked = unlocked == true
+
+	if unlocked == UI.MouseUnlockState.Unlocked then
+		return
+	end
+
+	UI.MouseUnlockState.Unlocked = unlocked
+
+	if unlocked then
+		UI.MouseUnlockState.PreviousMouseBehavior = UserInputService.MouseBehavior
+		UI.MouseUnlockState.PreviousMouseIconEnabled = UserInputService.MouseIconEnabled
+
+		if UI.MouseUnlockButton then
+			UI.MouseUnlockButton.Visible = true
+			UI.MouseUnlockButton.Modal = true
+		end
+
+		pcall(function()
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end)
+	else
+		if UI.MouseUnlockButton then
+			UI.MouseUnlockButton.Modal = false
+		end
+
+		pcall(function()
+			if UI.MouseUnlockState.PreviousMouseBehavior ~= nil then
+				UserInputService.MouseBehavior = UI.MouseUnlockState.PreviousMouseBehavior
+			end
+
+			if UI.MouseUnlockState.PreviousMouseIconEnabled ~= nil then
+				UserInputService.MouseIconEnabled = UI.MouseUnlockState.PreviousMouseIconEnabled
+			end
+		end)
+
+		UI.MouseUnlockState.PreviousMouseBehavior = nil
+		UI.MouseUnlockState.PreviousMouseIconEnabled = nil
+	end
+end
+
+SafeConnect(RunService.RenderStepped, function()
+	if not UI.MouseUnlockState.Unlocked then return end
+
+	if UI.MouseUnlockButton then
+		UI.MouseUnlockButton.Visible = true
+		UI.MouseUnlockButton.Modal = true
+	end
+
+	pcall(function()
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = true
+	end)
+end)
+
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
 	pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
@@ -2746,6 +2833,17 @@ local function UniversalDestruct()
 
 	UpdateFullbright(false)
 	NoclipSystem.Disable()
+	pcall(function()
+		if UI.SetMouseUnlocked then
+			UI.SetMouseUnlocked(false)
+		end
+
+		if UI.MouseUnlockGui then
+			UI.MouseUnlockGui:Destroy()
+			UI.MouseUnlockGui = nil
+			UI.MouseUnlockButton = nil
+		end
+	end)
 	Farm.Cleanup()
 	WispAllESPRemnants()
 end
@@ -3195,15 +3293,18 @@ UpdateLeftPanelShortcuts = function()
 		else
 			local invisStatus = Settings.FarmInvisibility and "ON" or "OFF"
 			local noclipStatus = Settings.Noclip and "ON" or "OFF"
+			local mouseStatus = UI.MouseUnlockState and UI.MouseUnlockState.Unlocked and "UNLOCKED" or "LOCKED"
 			UI.ShortcutList.Text = string.format(
-				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s\n[%s] Noclip: %s",
+				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s\n[%s] Noclip: %s\n[%s] Mouse: %s",
 				GetKeybindName(Settings.AimKey),
 				statusText,
 				GetKeybindName(Settings.ToggleUiKey),
 				GetKeybindName(Settings.FarmInvisToggleKey),
 				invisStatus,
 				GetKeybindName(Settings.NoclipToggleKey),
-				noclipStatus
+				noclipStatus,
+				GetKeybindName(Settings.MouseUnlockKey),
+				mouseStatus
 			)
 		end
 	end
@@ -3283,7 +3384,7 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		local configKey = capture.ConfigKey
 		local previousKey = Settings[configKey]
-		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey", "NoclipToggleKey"}
+		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey", "NoclipToggleKey", "MouseUnlockKey"}
 
 		for _, otherConfigKey in ipairs(keybindConfigKeys) do
 			if otherConfigKey ~= configKey and Settings[otherConfigKey] == input.KeyCode then
@@ -3339,6 +3440,13 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		UpdateLeftPanelShortcuts()
 		SystemLogEvent("Noclip toggled " .. (Settings.Noclip and "ON" or "OFF") .. ".")
+	end
+
+	if input.KeyCode == Settings.MouseUnlockKey then
+		local nextState = not (UI.MouseUnlockState and UI.MouseUnlockState.Unlocked)
+		UI.SetMouseUnlocked(nextState)
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent("Mouse " .. (nextState and "unlocked" or "locked") .. ".")
 	end
 end)
 
@@ -3874,8 +3982,8 @@ UI.RightContentWindow.Position = UDim2.new(0, 165, 0, 0)
 UI.RightContentWindow.BackgroundTransparency = 1
 
 UI.ShortcutsFrame = Instance.new("Frame", UI.Sidebar)
-UI.ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 50)
-UI.ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -95)
+UI.ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 68)
+UI.ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -112)
 UI.ShortcutsFrame.BackgroundTransparency = 1
 
 UI.ShortcutTitle = Instance.new("TextLabel", UI.ShortcutsFrame)
@@ -5181,6 +5289,7 @@ AddKeybindControl(UI.KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key
 AddKeybindControl(UI.KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(UI.KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
 AddKeybindControl(UI.KeybindPage, "NoclipToggleKey", "Noclip Toggle", "Toggles Noclip on or off. Default key: U.")
+AddKeybindControl(UI.KeybindPage, "MouseUnlockKey", "Mouse Unlock Toggle", "Unlocks or restores the Roblox mouse. Default key: M.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
@@ -5235,6 +5344,9 @@ local function FactoryResetSettings()
 
 	UpdateFullbright(false)
 	NoclipSystem.Disable()
+	if UI.SetMouseUnlocked then
+		UI.SetMouseUnlocked(false)
+	end
 	Farm.Cleanup()
 	ResetMarkedPlayerSelection()
 	RefreshAllESP()
