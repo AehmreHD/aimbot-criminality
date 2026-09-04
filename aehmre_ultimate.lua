@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - FIRE AXE REUSABLE FIX //
+-- // AEHMRE ULTIMATE HUB - PANIC & MARKED PERSISTENCE FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -1576,15 +1576,20 @@ local Farm = (function()
 		if FarmPanicTriggeredForLife then return end
 
 		FarmPanicTriggeredForLife = true
+		Settings.PanicMode = true
 
 		if Settings.FarmInvisibility then
 			FarmLog("PanicMode triggered, invisibility was already enabled")
+			if ConfigUIUpdaters.PanicMode then
+				ConfigUIUpdaters.PanicMode()
+			end
 			return
 		end
 
 		Settings.FarmInvisibility = true
 		FarmPanicActivatedInvisibility = true
 		EnableFarmInvisibility()
+		Settings.PanicMode = true
 
 		if not Settings.FarmInvisibility then
 			FarmPanicActivatedInvisibility = false
@@ -1594,6 +1599,10 @@ local Farm = (function()
 		end
 
 		RefreshFarmInvisibilityUI()
+
+		if ConfigUIUpdaters.PanicMode then
+			ConfigUIUpdaters.PanicMode()
+		end
 	end
 
 	local function CheckFarmPanicHealth(humanoid)
@@ -1643,12 +1652,19 @@ local Farm = (function()
 		if FarmPanicCharacterConnection then return end
 
 		FarmPanicCharacterConnection = LocalPlayer.CharacterAdded:Connect(function(character)
+			local keepPanicMode = Settings.PanicMode
 			FarmPanicTriggeredForLife = false
 
 			if FarmPanicActivatedInvisibility then
 				FarmPanicActivatedInvisibility = false
 				DisableFarmInvisibility()
 				RefreshFarmInvisibilityUI()
+			end
+
+			Settings.PanicMode = keepPanicMode
+
+			if ConfigUIUpdaters.PanicMode then
+				ConfigUIUpdaters.PanicMode()
 			end
 
 			if Settings.PanicMode then
@@ -4697,7 +4713,6 @@ local function AddMarkedPlayerDropdown(parentPage)
 	end
 
 	table.insert(UIUpdaters, function()
-		ResetMarkedPlayerSelection()
 		UpdateSelectionUI()
 	end)
 end
