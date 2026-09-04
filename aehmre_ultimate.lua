@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - PLAYER CHARACTER TAB //
+-- // AEHMRE ULTIMATE HUB - PLAYER CHARACTER WALKSPEED BOOL //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -266,6 +266,7 @@ local Settings = {
 	ExploitSimDamageAmount = 25,
 	PanicMode = false,
 	WalkSpeed = 16,
+	ApplyWalkSpeed = false,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -4935,24 +4936,28 @@ AddDashboardSlider(
 	1
 )
 
-UI.AddActionButton(
+AddDashboardButton(
 	UI.PlayerPage,
+	"ApplyWalkSpeed",
 	"Apply WalkSpeed",
-	"Applies the selected WalkSpeed to your current character.",
-	"Press once to apply the current slider value.",
-	function()
-		local character = LocalPlayer.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	"Continuously applies the selected WalkSpeed while enabled.",
+	"Turn OFF to stop forcing WalkSpeed.",
+	function(enabled)
+		if enabled then
+			local character = LocalPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-		if not humanoid then
-			SystemLogEvent("Apply WalkSpeed failed: Humanoid not found.")
-			return
+			if humanoid then
+				local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+				Settings.WalkSpeed = value
+				humanoid.WalkSpeed = value
+				SystemLogEvent(string.format("Apply WalkSpeed enabled: %.1f", value))
+			else
+				SystemLogEvent("Apply WalkSpeed enabled, waiting for Humanoid.")
+			end
+		else
+			SystemLogEvent("Apply WalkSpeed disabled.")
 		end
-
-		local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
-		Settings.WalkSpeed = value
-		humanoid.WalkSpeed = value
-		SystemLogEvent(string.format("WalkSpeed applied: %.1f", value))
 	end
 )
 
@@ -5107,6 +5112,20 @@ Instance.new("UICorner", UI.KillEngineBtn).CornerRadius = UDim.new(0, 6)
 HookButtonAnimations(UI.KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(60, 25, 30))
 
 UI.KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
+
+
+SafeConnect(RunService.Heartbeat, function()
+	if not Settings.ApplyWalkSpeed then return end
+
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+	if humanoid.WalkSpeed ~= value then
+		humanoid.WalkSpeed = value
+	end
+end)
 
 Compat.Log("BOOT", "Dashboard controls initialized")
 
