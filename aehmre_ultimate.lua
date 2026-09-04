@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - AXE EXACT 1 SECOND CLICK FIX //
+-- // AEHMRE ULTIMATE HUB - PLAYER CHARACTER TAB //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -265,6 +265,7 @@ local Settings = {
 	ExploitSimDamage = false,
 	ExploitSimDamageAmount = 25,
 	PanicMode = false,
+	WalkSpeed = 16,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -3872,6 +3873,7 @@ UI.CustPage = RegisterTabContainerPage("Customization")
 UI.KeybindPage = RegisterTabContainerPage("Keybinds")
 UI.TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 UI.FarmPage = RegisterTabContainerPage("Farm")
+UI.PlayerPage = RegisterTabContainerPage("Player / Character")
 UI.DevPage = RegisterTabContainerPage("Developer")
 UI.SettPage = RegisterTabContainerPage("Settings")
 
@@ -4915,6 +4917,42 @@ UI.AddActionButton(
 				SystemLogEvent("Developer Console could not be opened: " .. tostring(lastError))
 			end
 		end)
+	end
+)
+
+
+AddDashboardSlider(
+	UI.PlayerPage,
+	"WalkSpeed",
+	"WalkSpeed",
+	0.1,
+	1000000,
+	"Sets the WalkSpeed value that will be applied to your current Humanoid.",
+	"Range: 0.1 - 1,000,000. Default: 16.",
+	function(value)
+		Settings.WalkSpeed = math.clamp(value, 0.1, 1000000)
+	end,
+	1
+)
+
+UI.AddActionButton(
+	UI.PlayerPage,
+	"Apply WalkSpeed",
+	"Applies the selected WalkSpeed to your current character.",
+	"Press once to apply the current slider value.",
+	function()
+		local character = LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+		if not humanoid then
+			SystemLogEvent("Apply WalkSpeed failed: Humanoid not found.")
+			return
+		end
+
+		local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+		Settings.WalkSpeed = value
+		humanoid.WalkSpeed = value
+		SystemLogEvent(string.format("WalkSpeed applied: %.1f", value))
 	end
 )
 
