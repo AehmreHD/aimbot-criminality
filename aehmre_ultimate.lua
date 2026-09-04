@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - PLAYER CHARACTER WALKSPEED BOOL //
+-- // AEHMRE ULTIMATE HUB - NOCLIP FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -267,6 +267,9 @@ local Settings = {
 	PanicMode = false,
 	WalkSpeed = 16,
 	ApplyWalkSpeed = false,
+	Noclip = false,
+	NoclipSpeed = 30,
+	NoclipToggleKey = Enum.KeyCode.U,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -2604,6 +2607,116 @@ local function ExploitSimHitTarget(target)
 	return true
 end
 
+local NoclipSystem = (function()
+	local State = {
+		Character = nil,
+		Humanoid = nil,
+		OriginalWalkSpeed = nil,
+		OriginalCanCollide = {}
+	}
+
+	local function RestoreParts()
+		for part, canCollide in pairs(State.OriginalCanCollide) do
+			if part and part.Parent then
+				part.CanCollide = canCollide
+			end
+		end
+
+		State.OriginalCanCollide = {}
+	end
+
+	local function BindCharacter(character)
+		if State.Character == character then return end
+
+		RestoreParts()
+		State.Character = character
+		State.Humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
+		State.OriginalWalkSpeed = State.Humanoid and State.Humanoid.WalkSpeed or nil
+	end
+
+	local function Apply()
+		if not Settings.Noclip then return end
+
+		local character = LocalPlayer.Character
+		if not character then return end
+
+		BindCharacter(character)
+
+		local humanoid = State.Humanoid
+		if not humanoid or humanoid.Health <= 0 then return end
+
+		for _, object in ipairs(character:GetDescendants()) do
+			if object:IsA("BasePart") then
+				if State.OriginalCanCollide[object] == nil then
+					State.OriginalCanCollide[object] = object.CanCollide
+				end
+
+				object.CanCollide = false
+			end
+		end
+
+		local speed = math.clamp(tonumber(Settings.NoclipSpeed) or 30, 5, 1000)
+		Settings.NoclipSpeed = speed
+
+		if humanoid.WalkSpeed ~= speed then
+			humanoid.WalkSpeed = speed
+		end
+	end
+
+	local function Enable()
+		Settings.Noclip = true
+		BindCharacter(LocalPlayer.Character)
+		Apply()
+	end
+
+	local function Disable()
+		Settings.Noclip = false
+		RestoreParts()
+
+		local humanoid = State.Humanoid
+
+		if humanoid and humanoid.Parent then
+			if Settings.ApplyWalkSpeed then
+				humanoid.WalkSpeed = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+			elseif State.OriginalWalkSpeed ~= nil then
+				humanoid.WalkSpeed = State.OriginalWalkSpeed
+			end
+		end
+
+		State.Character = nil
+		State.Humanoid = nil
+		State.OriginalWalkSpeed = nil
+	end
+
+	SafeConnect(RunService.Stepped, function()
+		Apply()
+	end)
+
+	SafeConnect(LocalPlayer.CharacterAdded, function(character)
+		RestoreParts()
+		State.Character = nil
+		State.Humanoid = nil
+		State.OriginalWalkSpeed = nil
+
+		if Settings.Noclip then
+			task.defer(function()
+				BindCharacter(character)
+				Apply()
+			end)
+		end
+	end)
+
+	return {
+		Enable = Enable,
+		Disable = Disable,
+		Apply = Apply
+	}
+end)()
+
+if Settings.Noclip then
+	NoclipSystem.Enable()
+end
+
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
 	pcall(function() RunService:UnbindFromRenderStep("AimLockCameraUpdate") end)
@@ -2632,6 +2745,7 @@ local function UniversalDestruct()
 	end
 
 	UpdateFullbright(false)
+	NoclipSystem.Disable()
 	Farm.Cleanup()
 	WispAllESPRemnants()
 end
@@ -3080,13 +3194,16 @@ UpdateLeftPanelShortcuts = function()
 			UI.ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
 		else
 			local invisStatus = Settings.FarmInvisibility and "ON" or "OFF"
+			local noclipStatus = Settings.Noclip and "ON" or "OFF"
 			UI.ShortcutList.Text = string.format(
-				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s",
+				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s\n[%s] Noclip: %s",
 				GetKeybindName(Settings.AimKey),
 				statusText,
 				GetKeybindName(Settings.ToggleUiKey),
 				GetKeybindName(Settings.FarmInvisToggleKey),
-				invisStatus
+				invisStatus,
+				GetKeybindName(Settings.NoclipToggleKey),
+				noclipStatus
 			)
 		end
 	end
@@ -3166,7 +3283,7 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		local configKey = capture.ConfigKey
 		local previousKey = Settings[configKey]
-		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey"}
+		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey", "NoclipToggleKey"}
 
 		for _, otherConfigKey in ipairs(keybindConfigKeys) do
 			if otherConfigKey ~= configKey and Settings[otherConfigKey] == input.KeyCode then
@@ -3207,6 +3324,21 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		UpdateLeftPanelShortcuts()
 		SystemLogEvent("Invisibility toggled " .. (Settings.FarmInvisibility and "ON" or "OFF") .. ".")
+	end
+
+	if AccessNoticeDismissed and input.KeyCode == Settings.NoclipToggleKey then
+		if Settings.Noclip then
+			NoclipSystem.Disable()
+		else
+			NoclipSystem.Enable()
+		end
+
+		if ConfigUIUpdaters.Noclip then
+			ConfigUIUpdaters.Noclip()
+		end
+
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent("Noclip toggled " .. (Settings.Noclip and "ON" or "OFF") .. ".")
 	end
 end)
 
@@ -4961,6 +5093,44 @@ AddDashboardButton(
 	end
 )
 
+AddDashboardButton(
+	UI.PlayerPage,
+	"Noclip",
+	"Noclip",
+	"Disables character collision while enabled.",
+	"Can also be toggled with the Noclip Toggle keybind.",
+	function(enabled)
+		if enabled then
+			NoclipSystem.Enable()
+			SystemLogEvent("Noclip enabled.")
+		else
+			NoclipSystem.Disable()
+			SystemLogEvent("Noclip disabled.")
+		end
+
+		UpdateLeftPanelShortcuts()
+	end
+)
+
+AddDashboardSlider(
+	UI.PlayerPage,
+	"NoclipSpeed",
+	"Noclip Speed",
+	5,
+	1000,
+	"Controls your movement speed while Noclip is enabled.",
+	"Range: 5 - 1000. Default: 30.",
+	function(value)
+		Settings.NoclipSpeed = math.clamp(value, 5, 1000)
+
+		if Settings.Noclip then
+			NoclipSystem.Apply()
+		end
+	end,
+	0
+)
+
+
 UI.CycleColorBtn = Instance.new("TextButton", UI.CustPage)
 UI.CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
 UI.CycleColorBtn.BackgroundColor3 = Styles.CardBg
@@ -5010,6 +5180,7 @@ end)
 AddKeybindControl(UI.KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(UI.KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(UI.KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
+AddKeybindControl(UI.KeybindPage, "NoclipToggleKey", "Noclip Toggle", "Toggles Noclip on or off. Default key: U.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
@@ -5063,6 +5234,7 @@ local function FactoryResetSettings()
 	ControlClick(false)
 
 	UpdateFullbright(false)
+	NoclipSystem.Disable()
 	Farm.Cleanup()
 	ResetMarkedPlayerSelection()
 	RefreshAllESP()
@@ -5115,7 +5287,7 @@ UI.KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
 
 
 SafeConnect(RunService.Heartbeat, function()
-	if not Settings.ApplyWalkSpeed then return end
+	if not Settings.ApplyWalkSpeed or Settings.Noclip then return end
 
 	local character = LocalPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
