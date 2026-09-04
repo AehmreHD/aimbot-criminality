@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - SYNTAX AUDIT FIX //
+-- // AEHMRE ULTIMATE HUB - DEVELOPER TAB //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -3821,6 +3821,7 @@ UI.CustPage = RegisterTabContainerPage("Customization")
 UI.KeybindPage = RegisterTabContainerPage("Keybinds")
 UI.TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 UI.FarmPage = RegisterTabContainerPage("Farm")
+UI.DevPage = RegisterTabContainerPage("Developer")
 UI.SettPage = RegisterTabContainerPage("Settings")
 
 UI.SystemLogEntries = {}
@@ -4006,6 +4007,82 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 
 	ConfigUIUpdaters[configKey] = UpdateToggleFromSetting
 	table.insert(UIUpdaters, UpdateToggleFromSetting)
+end
+
+
+UI.AddActionButton = function(parentPage, displayTitle, desc, subDesc, callback)
+	local Card = Instance.new("TextButton", parentPage)
+	Card.Size = UDim2.new(0.94, 0, 0, 56)
+	Card.BackgroundColor3 = Styles.CardBg
+	Card.BorderSizePixel = 0
+	Card.Text = ""
+	Card.AutoButtonColor = false
+	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
+
+	local Stroke = Instance.new("UIStroke", Card)
+	ApplyPaletteStroke(Stroke)
+
+	local TitleLabel = Instance.new("TextLabel", Card)
+	TitleLabel.Size = UDim2.new(0.9, 0, 0, 18)
+	TitleLabel.Position = UDim2.new(0.03, 0, 0.08, 0)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = displayTitle
+	TitleLabel.Font = Enum.Font.GothamSemibold
+	TitleLabel.TextSize = 12
+	TitleLabel.TextColor3 = Styles.TextMain
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DescLabel = Instance.new("TextLabel", Card)
+	DescLabel.Size = UDim2.new(0.9, 0, 0, 14)
+	DescLabel.Position = UDim2.new(0.03, 0, 0.38, 0)
+	DescLabel.BackgroundTransparency = 1
+	DescLabel.Text = desc
+	DescLabel.Font = Enum.Font.Gotham
+	DescLabel.TextSize = 9
+	DescLabel.TextColor3 = Styles.TextDark
+	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local SubLabel = Instance.new("TextLabel", Card)
+	SubLabel.Size = UDim2.new(0.9, 0, 0, 14)
+	SubLabel.Position = UDim2.new(0.03, 0, 0.64, 0)
+	SubLabel.BackgroundTransparency = 1
+	SubLabel.Text = subDesc
+	SubLabel.Font = Enum.Font.Gotham
+	SubLabel.TextSize = 9
+	SubLabel.TextColor3 = Styles.Accent
+	SubLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	Card.MouseEnter:Connect(function()
+		TweenObj(Stroke, { Color = Styles.Accent }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardHover }, 0.2)
+	end)
+
+	Card.MouseLeave:Connect(function()
+		TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2)
+	end)
+
+	local ButtonScale = Instance.new("UIScale", Card)
+
+	Card.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			TweenObj(ButtonScale, { Scale = 0.97 }, 0.08)
+		end
+	end)
+
+	Card.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			TweenObj(ButtonScale, { Scale = 1 }, 0.12)
+		end
+	end)
+
+	Card.Activated:Connect(function()
+		if callback then
+			callback()
+		end
+	end)
+
+	return Card
 end
 
 local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max, desc, subDesc, customCallback, decimalPlaces)
@@ -4755,6 +4832,41 @@ AddDashboardButton(UI.CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ul
 		print("[RemoteSpy] DISABLED")
 	end
 end)
+
+
+UI.AddActionButton(
+	UI.DevPage,
+	"Open Developer Console",
+	"Opens the Roblox Developer Console instantly.",
+	"Useful on mobile instead of typing /console.",
+	function()
+		task.spawn(function()
+			local StarterGui = game:GetService("StarterGui")
+			local opened = false
+			local lastError = nil
+
+			for _ = 1, 3 do
+				local success, err = pcall(function()
+					StarterGui:SetCore("DevConsoleVisible", true)
+				end)
+
+				if success then
+					opened = true
+					break
+				end
+
+				lastError = err
+				task.wait(0.15)
+			end
+
+			if opened then
+				SystemLogEvent("Developer Console opened.")
+			else
+				SystemLogEvent("Developer Console could not be opened: " .. tostring(lastError))
+			end
+		end)
+	end
+)
 
 UI.CycleColorBtn = Instance.new("TextButton", UI.CustPage)
 UI.CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
