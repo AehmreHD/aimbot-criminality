@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - PANIC & MARKED PERSISTENCE FIX //
+-- // AEHMRE ULTIMATE HUB - AXE & SLEDGEHAMMER FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -2398,8 +2398,11 @@ local function IsFireAxeTool(object)
 	local toolTip = NormalizeToolText(object.ToolTip)
 
 	return name == "fireaxe"
+		or name == "sledgehammer"
 		or name:find("fireaxe", 1, true) ~= nil
 		or toolTip:find("fireaxe", 1, true) ~= nil
+		or name:find("sledgehammer", 1, true) ~= nil
+		or toolTip:find("sledgehammer", 1, true) ~= nil
 		or name:find("axe", 1, true) ~= nil
 		or toolTip:find("axe", 1, true) ~= nil
 end
@@ -2483,7 +2486,7 @@ local function KillMarkedPlayerWithFireAxe()
 		if not axe then
 			local equipped = GetSingleEquippedTool(character)
 			local equippedName = equipped and equipped.Name or "none"
-			FireAxeLog("Fire Axe action cancelled: Fire Axe not found. Equipped Tool=" .. equippedName)
+			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool not found. Equipped Tool=" .. equippedName)
 			return
 		end
 
@@ -2493,7 +2496,7 @@ local function KillMarkedPlayerWithFireAxe()
 			end)
 
 			if not equipSuccess then
-				FireAxeLog("Fire Axe action cancelled: Fire Axe could not be equipped.")
+				FireAxeLog("Axe/Sledgehammer action cancelled: supported tool could not be equipped.")
 				return
 			end
 
@@ -2503,12 +2506,12 @@ local function KillMarkedPlayerWithFireAxe()
 		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
 
 		if not axe or axe.Parent ~= character then
-			FireAxeLog("Fire Axe action cancelled: Fire Axe could not be equipped.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool could not be equipped.")
 			return
 		end
 
 		local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
-		FireAxeLog(string.format("Fire Axe equipped. Waiting %.1fs before teleport.", delayTime))
+		FireAxeLog(string.format("Axe/Sledgehammer equipped. Waiting %.1fs before teleport.", delayTime))
 		task.wait(delayTime)
 
 		character = LocalPlayer.Character
@@ -2528,7 +2531,7 @@ local function KillMarkedPlayerWithFireAxe()
 		localRoot.AssemblyLinearVelocity = Vector3.zero
 		localRoot.AssemblyAngularVelocity = Vector3.zero
 
-		FireAxeLog("Teleported to marked player. Clicking Fire Axe.")
+		FireAxeLog("Teleported to marked player. Clicking equipped tool.")
 		task.wait(0.05)
 
 		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
@@ -2536,10 +2539,10 @@ local function KillMarkedPlayerWithFireAxe()
 		if axe and axe.Parent == character then
 			ActivateFireAxe(axe)
 		else
-			FireAxeLog("Fire Axe click skipped: equipped axe was lost after teleport.")
+			FireAxeLog("Tool click skipped: equipped Axe/Sledgehammer was lost after teleport.")
 		end
 
-		FireAxeLog(string.format("Fire Axe action finished: %s", targetPlayer.Name))
+		FireAxeLog(string.format("Axe/Sledgehammer action finished: %s", targetPlayer.Name))
 	end, function(errorMessage)
 		return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
 	end)
@@ -4753,13 +4756,13 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Fire Axe", "Equips Fire Axe, waits, teleports to the marked player, then clicks once.", "Requires a marked player. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Equips a Fire Axe or Sledgehammer, waits, teleports to the marked player, then clicks once.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
 end)
 
-AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after equipping the Fire Axe before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
+AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after equipping the Axe or Sledgehammer before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
 	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
 end, 1)
 
