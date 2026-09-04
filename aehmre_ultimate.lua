@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - AXE & SLEDGEHAMMER FIX //
+-- // AEHMRE ULTIMATE HUB - AXE EXACT 1 SECOND CLICK FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -238,7 +238,7 @@ end
 local Settings = {
 	Enabled = true,
 	WallCheck = true,
-	AutoShoot = false,
+	AutoShoot = true,
 	ESPEnabled = true,
 	ShowMarkedPlayerESP = false,
 	KillMarkedWithFireAxe = false,
@@ -2454,12 +2454,13 @@ local function KillMarkedPlayerWithFireAxe()
 	end
 
 	KillMarkedFireAxeRunning = true
+	local actionStartedAt = os.clock()
 
 	local success, err = xpcall(function()
 		local targetPlayer = MarkedESP.SelectedPlayer
 
 		if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
-			FireAxeLog("Fire Axe action cancelled: no marked player selected.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: no marked player selected.")
 			return
 		end
 
@@ -2472,12 +2473,12 @@ local function KillMarkedPlayerWithFireAxe()
 		local targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
 
 		if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
-			FireAxeLog("Fire Axe action cancelled: local character unavailable.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: local character unavailable.")
 			return
 		end
 
 		if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-			FireAxeLog("Fire Axe action cancelled: marked player unavailable.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: marked player unavailable.")
 			return
 		end
 
@@ -2510,8 +2511,39 @@ local function KillMarkedPlayerWithFireAxe()
 			return
 		end
 
+		local elapsed = os.clock() - actionStartedAt
+		local clickWait = math.max(0, 1 - elapsed)
+
+		FireAxeLog(string.format("Axe/Sledgehammer equipped. Click scheduled at 1.0s. Waiting %.2fs.", clickWait))
+		if clickWait > 0 then
+			task.wait(clickWait)
+		end
+
+		character = LocalPlayer.Character
+		humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		localRoot = character and GetCharacterRoot(character)
+
+		targetCharacter = targetPlayer.Character
+		targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+		targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
+
+		if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled before click: character or target unavailable.")
+			return
+		end
+
+		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
+
+		if axe and axe.Parent == character then
+			ActivateFireAxe(axe)
+			FireAxeLog(string.format("Axe/Sledgehammer clicked at %.2fs.", os.clock() - actionStartedAt))
+		else
+			FireAxeLog("Tool click skipped: equipped Axe/Sledgehammer was lost before click.")
+			return
+		end
+
 		local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
-		FireAxeLog(string.format("Axe/Sledgehammer equipped. Waiting %.1fs before teleport.", delayTime))
+		FireAxeLog(string.format("Teleport delay started after click: %.1fs", delayTime))
 		task.wait(delayTime)
 
 		character = LocalPlayer.Character
@@ -2523,7 +2555,7 @@ local function KillMarkedPlayerWithFireAxe()
 		targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
 
 		if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-			FireAxeLog("Fire Axe action cancelled during delay: character or target unavailable.")
+			FireAxeLog("Axe/Sledgehammer action cancelled during teleport delay: character or target unavailable.")
 			return
 		end
 
@@ -2531,18 +2563,11 @@ local function KillMarkedPlayerWithFireAxe()
 		localRoot.AssemblyLinearVelocity = Vector3.zero
 		localRoot.AssemblyAngularVelocity = Vector3.zero
 
-		FireAxeLog("Teleported to marked player. Clicking equipped tool.")
-		task.wait(0.05)
-
-		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
-
-		if axe and axe.Parent == character then
-			ActivateFireAxe(axe)
-		else
-			FireAxeLog("Tool click skipped: equipped Axe/Sledgehammer was lost after teleport.")
-		end
-
-		FireAxeLog(string.format("Axe/Sledgehammer action finished: %s", targetPlayer.Name))
+		FireAxeLog(string.format(
+			"Axe/Sledgehammer action finished: %s | click=1.0s | teleport delay=%.1fs",
+			targetPlayer.Name,
+			delayTime
+		))
 	end, function(errorMessage)
 		return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
 	end)
@@ -2550,7 +2575,7 @@ local function KillMarkedPlayerWithFireAxe()
 	FinishKillMarkedFireAxe()
 
 	if not success then
-		FireAxeLog("Fire Axe action error: " .. tostring(err))
+		FireAxeLog("Axe/Sledgehammer action error: " .. tostring(err))
 	end
 end
 
@@ -4756,13 +4781,13 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Equips a Fire Axe or Sledgehammer, waits, teleports to the marked player, then clicks once.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Starts a 1-second click timer immediately, equips the tool, clicks at 1 second, then starts the teleport delay.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
 end)
 
-AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after equipping the Axe or Sledgehammer before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
+AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Teleport delay starts after the fixed 1-second click.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
 	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
 end, 1)
 
