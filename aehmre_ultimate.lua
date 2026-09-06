@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - AXE INSTANT TELEPORT TOOL USE FULL FIX //
+-- // AEHMRE ULTIMATE HUB - AXE 1 SECOND THEN TELEPORT ABILITY FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -2725,6 +2725,14 @@ local function KillMarkedPlayerWithFireAxe()
 			return
 		end
 
+		FireAxeLog("Axe/Sledgehammer action started. Waiting 1 second.")
+		task.wait(1)
+
+		if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
+			FireAxeLog("Axe/Sledgehammer action cancelled after wait: marked player unavailable.")
+			return
+		end
+
 		local character = LocalPlayer.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local localRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -2800,7 +2808,7 @@ local function KillMarkedPlayerWithFireAxe()
 		end
 
 		FireAxeLog(string.format(
-			"Axe/Sledgehammer used on marked player: %s | teleported directly into HumanoidRootPart | Tool:Activate()",
+			"Axe/Sledgehammer used on marked player: %s | waited 1 second | teleported into HumanoidRootPart | Tool:Activate()",
 			targetPlayer.Name
 		))
 	end, function(errorMessage)
@@ -5298,7 +5306,7 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Equips the supported tool, teleports directly into the marked player's HumanoidRootPart, then activates the Tool.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Waits 1 second after activation, then equips the tool, teleports into the marked player's HumanoidRootPart and activates it.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
