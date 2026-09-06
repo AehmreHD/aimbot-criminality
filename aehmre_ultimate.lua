@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - MOUSE UNLOCK M FULL FIX //
+-- // AEHMRE ULTIMATE HUB - AXE INSTANT TELEPORT TOOL USE FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -242,7 +242,6 @@ local Settings = {
 	ESPEnabled = true,
 	ShowMarkedPlayerESP = false,
 	KillMarkedWithFireAxe = false,
-	FireAxeTeleportDelay = 0.5,
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
 	OffscreenWarning = true,
@@ -731,7 +730,7 @@ SetBootStatus("Loading Farm...")
 local Farm = (function()
 	local FarmMoveSpeed = 22
 	local FarmPickupDistance = 8
-	local FarmIgnoreDuration = 60
+	local FarmIgnoreDuration = 12
 	local FarmLogHook = nil
 	local FarmLoopRunning = false
 	local FarmAutoMoneyRunning = false
@@ -740,6 +739,7 @@ local Farm = (function()
 	local FarmInvisAnimTrack = nil
 	local FarmInvisOriginalTransparency = {}
 	local FarmInvisParts = {}
+	local FarmInvisDescendantConnection = nil
 	local FarmSafeESPRunning = false
 	local FarmSafeESPElements = {}
 	local FarmPanicHealthConnection = nil
@@ -788,38 +788,71 @@ local Farm = (function()
 
 	local function FindFarmFolder()
 		if FarmFolderCache and FarmFolderCache.Parent then return FarmFolderCache end
-		if tick() - FarmFolderLastSearch < 2 then return nil end
-		FarmFolderLastSearch = tick()
+
+		if FarmFolderCache and not FarmFolderCache.Parent then
+			FarmFolderCache = nil
+			FarmFolderLastSearch = 0
+		end
+
 		local map = workspace:FindFirstChild("Map")
 		local filter = workspace:FindFirstChild("Filter")
 		local folder = (map and map:FindFirstChild("BredMakurz")) or (filter and filter:FindFirstChild("BredMakurz"))
-		if not folder then
+
+		if folder then
+			FarmFolderCache = folder
+			return folder
+		end
+
+		if FarmFolderLastSearch == 0 then
+			FarmFolderLastSearch = tick()
+
 			for _, object in ipairs(workspace:GetDescendants()) do
 				if object:IsA("Folder") and object.Name == "BredMakurz" then
-					folder = object
-					break
+					FarmFolderCache = object
+					return object
 				end
 			end
 		end
-		FarmFolderCache = folder
-		return folder
+
+		return nil
 	end
+
+	SafeConnect(workspace.DescendantAdded, function(object)
+		if object:IsA("Folder") and object.Name == "BredMakurz" then
+			FarmFolderCache = object
+			FarmFolderLastSearch = tick()
+		end
+	end)
 
 	local function IsFarmTargetAvailable(object)
 		if not object or not object.Parent then return false end
-		if FarmProcessed[object] then return false end
+
 		local ignoredUntil = FarmTempIgnored[object]
 		if ignoredUntil then
 			if tick() < ignoredUntil then return false end
 			FarmTempIgnored[object] = nil
 		end
+
 		local name = object.Name:lower()
 		if not name:find("safe") and not name:find("register") then return false end
+
 		local values = object:FindFirstChild("Values")
 		local broken = values and values:FindFirstChild("Broken")
-		if not broken or broken.Value then return false end
+		if not broken then return false end
+
+		if FarmProcessed[object] then
+			if broken.Value then
+				return false
+			end
+
+			FarmProcessed[object] = nil
+		end
+
+		if broken.Value then return false end
+
 		local mainPart = object:FindFirstChild("MainPart") or object.PrimaryPart or object:FindFirstChildOfClass("BasePart")
 		if not mainPart or mainPart.Position.Y < 4.8 then return false end
+
 		return true, mainPart
 	end
 
@@ -887,69 +920,196 @@ local Farm = (function()
 		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
 
+	local function BeginFarmTraversalNoclip(character)
+		local original = {}
+		local parts = {}
+
+		if not character then
+			return original, parts
+		end
+
+		for _, object in ipairs(character:GetDescendants()) do
+			if object:IsA("BasePart") then
+				original[object] = object.CanCollide
+				parts[#parts + 1] = object
+				object.CanCollide = false
+			end
+		end
+
+		return original, parts
+	end
+
+	local function KeepFarmTraversalNoclip(parts)
+		for _, part in ipairs(parts) do
+			if part and part.Parent and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+
+	local function EndFarmTraversalNoclip(original)
+		for part, canCollide in pairs(original) do
+			if part and part.Parent then
+				part.CanCollide = canCollide
+			end
+		end
+	end
+
+	local function DirectFarmNoclipMove(targetPart, original, parts)
+		local character, humanoid, hrp = GetFarmCharacter()
+
+		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
+			return false
+		end
+
+		FarmStatus = "Noclip fallback"
+
+		local started = tick()
+		local speed = math.max(FarmMoveSpeed * 2, math.min(tonumber(Settings.NoclipSpeed) or 30, 120))
+
+		while Settings.FarmEnabled and tick() - started < 15 do
+			character, humanoid, hrp = GetFarmCharacter()
+
+			if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
+				return false
+			end
+
+			KeepFarmTraversalNoclip(parts)
+
+			local destination = GetFarmPositionInFront(targetPart, hrp.Position)
+			if not destination then
+				return false
+			end
+
+			local offset = destination - hrp.Position
+			local distance = offset.Magnitude
+
+			if distance <= 4.5 then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+				return true
+			end
+
+			local dt = RunService.Heartbeat:Wait()
+			local stepDistance = math.min(distance, speed * math.max(dt, 1 / 240))
+			local nextPosition = hrp.Position + offset.Unit * stepDistance
+			local rotation = hrp.CFrame - hrp.CFrame.Position
+
+			hrp.CFrame = CFrame.new(nextPosition) * rotation
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		return false
+	end
+
 	local function MoveToFarmTarget(targetPart)
 		local character, humanoid, hrp = GetFarmCharacter()
-		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then return false end
+
+		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then
+			return false
+		end
 
 		local destination = GetFarmPositionInFront(targetPart, hrp.Position)
 		if not destination then return false end
 
-		FarmStatus = "Pathfinding"
+		local originalCanCollide, noclipParts = BeginFarmTraversalNoclip(character)
+		local finishedSuccessfully = false
 
-		local waypoints = ComputeFarmPath(hrp.Position, destination)
-		if not waypoints then
-			FarmStatus = "Path failed"
-			return false
-		end
+		local success, result = xpcall(function()
+			FarmStatus = "Pathfinding"
 
-		for _, waypoint in ipairs(waypoints) do
-			if not Settings.FarmEnabled then
-				FarmStatus = "Idle"
-				return false
+			local waypoints = ComputeFarmPath(hrp.Position, destination)
+
+			if not waypoints then
+				task.wait(0.12)
+
+				character, humanoid, hrp = GetFarmCharacter()
+				if character and humanoid and humanoid.Health > 0 and hrp and targetPart.Parent then
+					destination = GetFarmPositionInFront(targetPart, hrp.Position)
+					waypoints = destination and ComputeFarmPath(hrp.Position, destination) or nil
+				end
+			end
+
+			if not waypoints then
+				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
+			end
+
+			for _, waypoint in ipairs(waypoints) do
+				if not Settings.FarmEnabled then
+					return false
+				end
+
+				character, humanoid, hrp = GetFarmCharacter()
+
+				if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
+					return false
+				end
+
+				KeepFarmTraversalNoclip(noclipParts)
+
+				if waypoint.Action == Enum.PathWaypointAction.Jump then
+					humanoid.Jump = true
+				end
+
+				humanoid:MoveTo(waypoint.Position)
+
+				local finished = false
+				local reached = false
+				local connection
+
+				connection = humanoid.MoveToFinished:Connect(function(didReach)
+					reached = didReach
+					finished = true
+				end)
+
+				local waypointStarted = tick()
+
+				while not finished and tick() - waypointStarted < 3.25 do
+					if not Settings.FarmEnabled or humanoid.Health <= 0 then
+						break
+					end
+
+					KeepFarmTraversalNoclip(noclipParts)
+					task.wait(0.05)
+				end
+
+				if connection then
+					connection:Disconnect()
+				end
+
+				if not reached then
+					return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
+				end
 			end
 
 			character, humanoid, hrp = GetFarmCharacter()
-			if not character or not humanoid or humanoid.Health <= 0 or not hrp then
-				FarmStatus = "Idle"
+
+			if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
 				return false
 			end
 
-			if waypoint.Action == Enum.PathWaypointAction.Jump then
-				humanoid.Jump = true
+			destination = GetFarmPositionInFront(targetPart, hrp.Position)
+
+			if not destination or (destination - hrp.Position).Magnitude > 7 then
+				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
 			end
 
-			humanoid:MoveTo(waypoint.Position)
+			return true
+		end, function(errorMessage)
+			return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+		end)
 
-			local finished = false
-			local reached = false
-			local connection
-
-			connection = humanoid.MoveToFinished:Connect(function(didReach)
-				reached = didReach
-				finished = true
-			end)
-
-			local started = tick()
-
-			while not finished and tick() - started < 4 do
-				if not Settings.FarmEnabled or humanoid.Health <= 0 then
-					break
-				end
-				task.wait(0.05)
-			end
-
-			if connection then
-				connection:Disconnect()
-			end
-
-			if not reached then
-				FarmStatus = "Path blocked"
-				return false
-			end
+		if success then
+			finishedSuccessfully = result == true
+		else
+			FarmLog("Movement error: " .. tostring(result))
 		end
 
-		FarmStatus = "Idle"
-		return true
+		EndFarmTraversalNoclip(originalCanCollide)
+		FarmStatus = finishedSuccessfully and "Idle" or "Move failed"
+
+		return finishedSuccessfully
 	end
 
 	local function FindCrowbarDealer()
@@ -997,6 +1157,27 @@ local Farm = (function()
 			RemoteSpy.Fire(openRemote, false)
 		end)
 		task.wait(0.5)
+
+		if not HasFarmTool("Crowbar") then
+			task.wait(0.75)
+
+			pcall(function()
+				RemoteSpy.Fire(openRemote, true, "shop", mainPart, "IllegalStore")
+			end)
+
+			task.wait(0.5)
+
+			pcall(function()
+				RemoteSpy.Invoke(buyRemote, "IllegalStore", "Melees", "Crowbar", mainPart, nil, true)
+			end)
+
+			task.wait(1.5)
+
+			pcall(function()
+				RemoteSpy.Fire(openRemote, false)
+			end)
+		end
+
 		FarmStatus = "Idle"
 		return HasFarmTool("Crowbar") ~= nil
 	end
@@ -1039,7 +1220,7 @@ local Farm = (function()
 		FarmStatus = "Idle"
 		local values = targetObject:FindFirstChild("Values")
 		local broken = values and values:FindFirstChild("Broken")
-		return broken and broken.Value or hits > 0
+		return broken ~= nil and broken.Value == true
 	end
 
 	local function GetMoneyNearFarmTarget(targetObject)
@@ -1074,44 +1255,74 @@ local Farm = (function()
 	end
 
 	local function StartFarm()
-		if FarmLoopRunning then return end
+		if FarmLoopRunning then
+			FarmLog("Auto farm is already running")
+			return
+		end
+
 		FarmProcessed = {}
 		FarmTempIgnored = {}
 		FarmLoopRunning = true
 		FarmLog("Auto farm enabled")
+
 		task.spawn(function()
 			while FarmLoopRunning and Settings.FarmEnabled do
-				local character, humanoid = GetFarmCharacter()
-				if not character or not humanoid or humanoid.Health <= 0 then
-					FarmStatus = "Waiting for respawn"
-					task.wait(2)
-					continue
-				end
-				if not HasFarmTool("Crowbar") then
-					if not BuyFarmCrowbar() then
-						FarmStatus = "Crowbar unavailable"
-						task.wait(4)
-						continue
+				local cycleSuccess, cycleError = xpcall(function()
+					local character, humanoid = GetFarmCharacter()
+
+					if not character or not humanoid or humanoid.Health <= 0 then
+						FarmStatus = "Waiting for respawn"
+						task.wait(1)
+						return
 					end
-				end
-				local targetObject, targetPart = GetNearestFarmTarget()
-				if not targetObject or not targetPart then
-					FarmStatus = "No targets"
-					task.wait(3)
-					continue
-				end
-				if MoveToFarmTarget(targetPart) then
+
+					if not HasFarmTool("Crowbar") then
+						if not BuyFarmCrowbar() then
+							FarmStatus = "Crowbar unavailable"
+							task.wait(1.5)
+							return
+						end
+					end
+
+					local targetObject, targetPart = GetNearestFarmTarget()
+
+					if not targetObject or not targetPart then
+						FarmStatus = "Waiting for target"
+						task.wait(1)
+						return
+					end
+
+					if not MoveToFarmTarget(targetPart) then
+						FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+						task.wait(0.35)
+						return
+					end
+
+					if not targetObject.Parent then
+						task.wait(0.2)
+						return
+					end
+
 					if HackFarmTarget(targetObject) then
 						CollectFarmMoney(targetObject)
 						FarmProcessed[targetObject] = true
+						FarmTempIgnored[targetObject] = nil
 					else
 						FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
 					end
-				else
-					FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+
+					task.wait(0.35)
+				end, function(errorMessage)
+					return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+				end)
+
+				if not cycleSuccess then
+					FarmStatus = "Retrying"
+					FarmLog("Farm cycle recovered from error: " .. tostring(cycleError))
+					task.wait(1)
 				end
-				task.wait(0.5)
 			end
+
 			FarmLoopRunning = false
 			FarmStatus = "Idle"
 		end)
@@ -1214,6 +1425,44 @@ local Farm = (function()
 			FarmInvisHrp = nil
 			FarmInvisHumanoid = nil
 		end
+	end
+
+	local function ClearFarmInvisPartCache(restore)
+		if FarmInvisDescendantConnection then
+			FarmInvisDescendantConnection:Disconnect()
+			FarmInvisDescendantConnection = nil
+		end
+
+		if restore then
+			for part, transparency in pairs(FarmInvisOriginalTransparency) do
+				if part and part.Parent then
+					part.Transparency = transparency
+				end
+			end
+		end
+
+		FarmInvisOriginalTransparency = {}
+		FarmInvisParts = {}
+	end
+
+	local function CacheFarmInvisParts()
+		ClearFarmInvisPartCache(false)
+
+		if not FarmInvisCharacter then return end
+
+		for _, object in ipairs(FarmInvisCharacter:GetDescendants()) do
+			if object:IsA("BasePart") then
+				FarmInvisOriginalTransparency[object] = object.Transparency
+				FarmInvisParts[#FarmInvisParts + 1] = object
+			end
+		end
+
+		FarmInvisDescendantConnection = FarmInvisCharacter.DescendantAdded:Connect(function(object)
+			if object:IsA("BasePart") and FarmInvisOriginalTransparency[object] == nil then
+				FarmInvisOriginalTransparency[object] = object.Transparency
+				FarmInvisParts[#FarmInvisParts + 1] = object
+			end
+		end)
 	end
 
 	local function EnsureFarmInvisWarning()
@@ -1387,13 +1636,7 @@ local Farm = (function()
 			Camera.CameraSubject = FarmInvisHumanoid
 		end
 
-		if FarmInvisCharacter then
-			for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
-				if part:IsA("BasePart") and part.Transparency == 0.5 then
-					part.Transparency = 0
-				end
-			end
-		end
+		ClearFarmInvisPartCache(true)
 
 		if FarmInvisWarningLabel then
 			FarmInvisWarningLabel.Visible = false
@@ -1438,6 +1681,7 @@ local Farm = (function()
 
 		FarmInvisPossible = true
 		Camera.CameraSubject = FarmInvisHrp
+		CacheFarmInvisParts()
 		LoadFarmInvisAnimation()
 
 		FarmInvisConnection = RunService.Heartbeat:Connect(function(dt)
@@ -1480,6 +1724,7 @@ local Farm = (function()
 
 				FarmInvisPossible = true
 				Camera.CameraSubject = FarmInvisHrp
+				CacheFarmInvisParts()
 				LoadFarmInvisAnimation()
 			end
 
@@ -1558,11 +1803,9 @@ local Farm = (function()
 				end
 			end
 
-			if FarmInvisCharacter then
-				for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
-					if part:IsA("BasePart") and part.Transparency ~= 1 then
-						part.Transparency = 0.5
-					end
+			for _, part in ipairs(FarmInvisParts) do
+				if part and part.Parent and part.Transparency ~= 1 and part.Transparency ~= 0.5 then
+					part.Transparency = 0.5
 				end
 			end
 		end)
@@ -2370,13 +2613,26 @@ local function FireAxeLog(message)
 end
 
 local function ActivateFireAxe(axe)
-	if not axe or not axe:IsA("Tool") then
+	if not axe or not axe:IsA("Tool") or axe.Parent ~= LocalPlayer.Character then
 		return false
 	end
 
-	ControlClick(true)
-	task.wait(0.08)
-	ControlClick(false)
+	local success = pcall(function()
+		axe:Activate()
+	end)
+
+	if not success then
+		return false
+	end
+
+	task.delay(0.1, function()
+		if axe and axe.Parent == LocalPlayer.Character then
+			pcall(function()
+				axe:Deactivate()
+			end)
+		end
+	end)
+
 	return true
 end
 
@@ -2460,7 +2716,6 @@ local function KillMarkedPlayerWithFireAxe()
 	end
 
 	KillMarkedFireAxeRunning = true
-	local actionStartedAt = os.clock()
 
 	local success, err = xpcall(function()
 		local targetPlayer = MarkedESP.SelectedPlayer
@@ -2472,11 +2727,11 @@ local function KillMarkedPlayerWithFireAxe()
 
 		local character = LocalPlayer.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local localRoot = character and GetCharacterRoot(character)
+		local localRoot = character and character:FindFirstChild("HumanoidRootPart")
 
 		local targetCharacter = targetPlayer.Character
 		local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-		local targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
+		local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 
 		if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
 			FireAxeLog("Axe/Sledgehammer action cancelled: local character unavailable.")
@@ -2484,7 +2739,7 @@ local function KillMarkedPlayerWithFireAxe()
 		end
 
 		if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-			FireAxeLog("Axe/Sledgehammer action cancelled: marked player unavailable.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: marked player's HumanoidRootPart is unavailable.")
 			return
 		end
 
@@ -2507,61 +2762,31 @@ local function KillMarkedPlayerWithFireAxe()
 				return
 			end
 
-			task.wait(0.15)
+			task.wait()
 		end
 
+		character = LocalPlayer.Character
+		humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		localRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+		targetCharacter = targetPlayer.Character
+		targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+		targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
 		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
+
+		if not humanoid or humanoid.Health <= 0 or not localRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled after equip: local character unavailable.")
+			return
+		end
+
+		if not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled after equip: marked player's HumanoidRootPart is unavailable.")
+			return
+		end
 
 		if not axe or axe.Parent ~= character then
-			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool could not be equipped.")
-			return
-		end
-
-		local elapsed = os.clock() - actionStartedAt
-		local clickWait = math.max(0, 1 - elapsed)
-
-		FireAxeLog(string.format("Axe/Sledgehammer equipped. Click scheduled at 1.0s. Waiting %.2fs.", clickWait))
-		if clickWait > 0 then
-			task.wait(clickWait)
-		end
-
-		character = LocalPlayer.Character
-		humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		localRoot = character and GetCharacterRoot(character)
-
-		targetCharacter = targetPlayer.Character
-		targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-		targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
-
-		if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-			FireAxeLog("Axe/Sledgehammer action cancelled before click: character or target unavailable.")
-			return
-		end
-
-		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
-
-		if axe and axe.Parent == character then
-			ActivateFireAxe(axe)
-			FireAxeLog(string.format("Axe/Sledgehammer clicked at %.2fs.", os.clock() - actionStartedAt))
-		else
-			FireAxeLog("Tool click skipped: equipped Axe/Sledgehammer was lost before click.")
-			return
-		end
-
-		local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
-		FireAxeLog(string.format("Teleport delay started after click: %.1fs", delayTime))
-		task.wait(delayTime)
-
-		character = LocalPlayer.Character
-		humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		localRoot = character and GetCharacterRoot(character)
-
-		targetCharacter = targetPlayer.Character
-		targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-		targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
-
-		if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-			FireAxeLog("Axe/Sledgehammer action cancelled during teleport delay: character or target unavailable.")
+			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool was not equipped.")
 			return
 		end
 
@@ -2569,10 +2794,14 @@ local function KillMarkedPlayerWithFireAxe()
 		localRoot.AssemblyLinearVelocity = Vector3.zero
 		localRoot.AssemblyAngularVelocity = Vector3.zero
 
+		if not ActivateFireAxe(axe) then
+			FireAxeLog("Axe/Sledgehammer action cancelled: Tool:Activate() failed.")
+			return
+		end
+
 		FireAxeLog(string.format(
-			"Axe/Sledgehammer action finished: %s | click=1.0s | teleport delay=%.1fs",
-			targetPlayer.Name,
-			delayTime
+			"Axe/Sledgehammer used on marked player: %s | teleported directly into HumanoidRootPart | Tool:Activate()",
+			targetPlayer.Name
 		))
 	end, function(errorMessage)
 		return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
@@ -2613,8 +2842,17 @@ local NoclipSystem = (function()
 		Character = nil,
 		Humanoid = nil,
 		OriginalWalkSpeed = nil,
-		OriginalCanCollide = {}
+		OriginalCanCollide = {},
+		Parts = {},
+		DescendantConnection = nil
 	}
+
+	local function DisconnectDescendantConnection()
+		if State.DescendantConnection then
+			State.DescendantConnection:Disconnect()
+			State.DescendantConnection = nil
+		end
+	end
 
 	local function RestoreParts()
 		for part, canCollide in pairs(State.OriginalCanCollide) do
@@ -2624,15 +2862,34 @@ local NoclipSystem = (function()
 		end
 
 		State.OriginalCanCollide = {}
+		State.Parts = {}
+	end
+
+	local function TrackPart(object)
+		if not object or not object:IsA("BasePart") then return end
+		if State.OriginalCanCollide[object] ~= nil then return end
+
+		State.OriginalCanCollide[object] = object.CanCollide
+		State.Parts[#State.Parts + 1] = object
 	end
 
 	local function BindCharacter(character)
 		if State.Character == character then return end
 
+		DisconnectDescendantConnection()
 		RestoreParts()
+
 		State.Character = character
 		State.Humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
 		State.OriginalWalkSpeed = State.Humanoid and State.Humanoid.WalkSpeed or nil
+
+		if not character then return end
+
+		for _, object in ipairs(character:GetDescendants()) do
+			TrackPart(object)
+		end
+
+		State.DescendantConnection = character.DescendantAdded:Connect(TrackPart)
 	end
 
 	local function Apply()
@@ -2646,12 +2903,8 @@ local NoclipSystem = (function()
 		local humanoid = State.Humanoid
 		if not humanoid or humanoid.Health <= 0 then return end
 
-		for _, object in ipairs(character:GetDescendants()) do
-			if object:IsA("BasePart") then
-				if State.OriginalCanCollide[object] == nil then
-					State.OriginalCanCollide[object] = object.CanCollide
-				end
-
+		for _, object in ipairs(State.Parts) do
+			if object and object.Parent and object.CanCollide then
 				object.CanCollide = false
 			end
 		end
@@ -2672,6 +2925,7 @@ local NoclipSystem = (function()
 
 	local function Disable()
 		Settings.Noclip = false
+		DisconnectDescendantConnection()
 		RestoreParts()
 
 		local humanoid = State.Humanoid
@@ -2694,6 +2948,7 @@ local NoclipSystem = (function()
 	end)
 
 	SafeConnect(LocalPlayer.CharacterAdded, function(character)
+		DisconnectDescendantConnection()
 		RestoreParts()
 		State.Character = nil
 		State.Humanoid = nil
@@ -2713,7 +2968,6 @@ local NoclipSystem = (function()
 		Apply = Apply
 	}
 end)()
-
 if Settings.Noclip then
 	NoclipSystem.Enable()
 end
@@ -2794,13 +3048,23 @@ SafeConnect(RunService.RenderStepped, function()
 	if not UI.MouseUnlockState.Unlocked then return end
 
 	if UI.MouseUnlockButton then
-		UI.MouseUnlockButton.Visible = true
-		UI.MouseUnlockButton.Modal = true
+		if not UI.MouseUnlockButton.Visible then
+			UI.MouseUnlockButton.Visible = true
+		end
+
+		if not UI.MouseUnlockButton.Modal then
+			UI.MouseUnlockButton.Modal = true
+		end
 	end
 
 	pcall(function()
-		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-		UserInputService.MouseIconEnabled = true
+		if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+
+		if not UserInputService.MouseIconEnabled then
+			UserInputService.MouseIconEnabled = true
+		end
 	end)
 end)
 
@@ -3675,7 +3939,17 @@ local function UpdateOffscreenWarnings()
 		end
 	end
 end
-SafeConnect(RunService.RenderStepped, UpdateOffscreenWarnings)
+UI.OffscreenUpdateAccumulator = 0
+SafeConnect(RunService.RenderStepped, function(dt)
+	UI.OffscreenUpdateAccumulator += dt
+
+	if UI.OffscreenUpdateAccumulator < 0.05 then
+		return
+	end
+
+	UI.OffscreenUpdateAccumulator = 0
+	UpdateOffscreenWarnings()
+end)
 
 UI.MainFrame = Instance.new("Frame", UI.ScreenGui)
 UI.MainFrame.Name = "UI.MainFrame"
@@ -5024,15 +5298,11 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Starts a 1-second click timer immediately, equips the tool, clicks at 1 second, then starts the teleport delay.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Equips the supported tool, teleports directly into the marked player's HumanoidRootPart, then activates the Tool.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
 end)
-
-AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Teleport delay starts after the fixed 1-second click.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
-	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
-end, 1)
 
 AddDashboardButton(UI.VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
 	UpdateOffscreenWarnings()
