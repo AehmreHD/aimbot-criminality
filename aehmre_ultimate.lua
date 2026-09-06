@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - AXE 1 SECOND THEN TELEPORT ABILITY FULL FIX //
+-- // AEHMRE ULTIMATE HUB - START FARM RELIABILITY FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -787,19 +787,27 @@ local Farm = (function()
 	end
 
 	local function FindFarmFolder()
-		if FarmFolderCache and FarmFolderCache.Parent then return FarmFolderCache end
-
-		if FarmFolderCache and not FarmFolderCache.Parent then
-			FarmFolderCache = nil
-			FarmFolderLastSearch = 0
+		if FarmFolderCache and FarmFolderCache.Parent then
+			return FarmFolderCache
 		end
+
+		FarmFolderCache = nil
 
 		local map = workspace:FindFirstChild("Map")
 		local filter = workspace:FindFirstChild("Filter")
-		local folder = (map and map:FindFirstChild("BredMakurz")) or (filter and filter:FindFirstChild("BredMakurz"))
+		local folder = nil
+
+		if map then
+			folder = map:FindFirstChild("BredMakurz", true)
+		end
+
+		if not folder and filter then
+			folder = filter:FindFirstChild("BredMakurz", true)
+		end
 
 		if folder then
 			FarmFolderCache = folder
+			FarmFolderLastSearch = tick()
 			return folder
 		end
 
@@ -807,7 +815,7 @@ local Farm = (function()
 			FarmFolderLastSearch = tick()
 
 			for _, object in ipairs(workspace:GetDescendants()) do
-				if object:IsA("Folder") and object.Name == "BredMakurz" then
+				if object.Name == "BredMakurz" then
 					FarmFolderCache = object
 					return object
 				end
@@ -818,7 +826,7 @@ local Farm = (function()
 	end
 
 	SafeConnect(workspace.DescendantAdded, function(object)
-		if object:IsA("Folder") and object.Name == "BredMakurz" then
+		if object.Name == "BredMakurz" then
 			FarmFolderCache = object
 			FarmFolderLastSearch = tick()
 		end
@@ -859,14 +867,21 @@ local Farm = (function()
 	local function GetNearestFarmTarget()
 		local folder = FindFarmFolder()
 		local _, humanoid, hrp = GetFarmCharacter()
-		if not folder or not humanoid or humanoid.Health <= 0 or not hrp then return nil end
+
+		if not folder or not humanoid or humanoid.Health <= 0 or not hrp then
+			return nil
+		end
+
 		local closestObject = nil
 		local closestPart = nil
 		local closestDistance = math.huge
-		for _, object in ipairs(folder:GetChildren()) do
+
+		local function Evaluate(object)
 			local available, mainPart = IsFarmTargetAvailable(object)
+
 			if available then
 				local distance = (mainPart.Position - hrp.Position).Magnitude
+
 				if distance < closestDistance then
 					closestDistance = distance
 					closestObject = object
@@ -874,6 +889,19 @@ local Farm = (function()
 				end
 			end
 		end
+
+		for _, object in ipairs(folder:GetChildren()) do
+			Evaluate(object)
+		end
+
+		if not closestObject then
+			for _, object in ipairs(folder:GetDescendants()) do
+				if object:IsA("Model") or object:IsA("Folder") then
+					Evaluate(object)
+				end
+			end
+		end
+
 		return closestObject, closestPart
 	end
 
@@ -955,52 +983,67 @@ local Farm = (function()
 		end
 	end
 
-	local function DirectFarmNoclipMove(targetPart, original, parts)
+	local function DirectFarmNoclipMove(targetPart)
 		local character, humanoid, hrp = GetFarmCharacter()
 
 		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
 			return false
 		end
 
-		FarmStatus = "Noclip fallback"
+		local originalCanCollide, noclipParts = BeginFarmTraversalNoclip(character)
+		local completed = false
 
-		local started = tick()
-		local speed = math.max(FarmMoveSpeed * 2, math.min(tonumber(Settings.NoclipSpeed) or 30, 120))
+		local success, result = xpcall(function()
+			FarmStatus = "Noclip fallback"
 
-		while Settings.FarmEnabled and tick() - started < 15 do
-			character, humanoid, hrp = GetFarmCharacter()
+			local started = tick()
+			local speed = math.max(55, math.min(tonumber(Settings.NoclipSpeed) or 30, 120))
 
-			if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
-				return false
-			end
+			while Settings.FarmEnabled and tick() - started < 18 do
+				character, humanoid, hrp = GetFarmCharacter()
 
-			KeepFarmTraversalNoclip(parts)
+				if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
+					return false
+				end
 
-			local destination = GetFarmPositionInFront(targetPart, hrp.Position)
-			if not destination then
-				return false
-			end
+				KeepFarmTraversalNoclip(noclipParts)
 
-			local offset = destination - hrp.Position
-			local distance = offset.Magnitude
+				local destination = GetFarmPositionInFront(targetPart, hrp.Position)
+				if not destination then return false end
 
-			if distance <= 4.5 then
+				local offset = destination - hrp.Position
+				local distance = offset.Magnitude
+
+				if distance <= 4.5 then
+					hrp.AssemblyLinearVelocity = Vector3.zero
+					hrp.AssemblyAngularVelocity = Vector3.zero
+					return true
+				end
+
+				local dt = RunService.Heartbeat:Wait()
+				local stepDistance = math.min(distance, speed * math.max(dt, 1 / 240))
+				local nextPosition = hrp.Position + offset.Unit * stepDistance
+				local rotation = hrp.CFrame - hrp.CFrame.Position
+
+				hrp.CFrame = CFrame.new(nextPosition) * rotation
 				hrp.AssemblyLinearVelocity = Vector3.zero
 				hrp.AssemblyAngularVelocity = Vector3.zero
-				return true
 			end
 
-			local dt = RunService.Heartbeat:Wait()
-			local stepDistance = math.min(distance, speed * math.max(dt, 1 / 240))
-			local nextPosition = hrp.Position + offset.Unit * stepDistance
-			local rotation = hrp.CFrame - hrp.CFrame.Position
+			return false
+		end, function(errorMessage)
+			return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+		end)
 
-			hrp.CFrame = CFrame.new(nextPosition) * rotation
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
+		EndFarmTraversalNoclip(originalCanCollide)
+
+		if success then
+			completed = result == true
+		else
+			FarmLog("Noclip fallback error: " .. tostring(result))
 		end
 
-		return false
+		return completed
 	end
 
 	local function MoveToFarmTarget(targetPart)
@@ -1013,74 +1056,18 @@ local Farm = (function()
 		local destination = GetFarmPositionInFront(targetPart, hrp.Position)
 		if not destination then return false end
 
-		local originalCanCollide, noclipParts = BeginFarmTraversalNoclip(character)
-		local finishedSuccessfully = false
+		FarmStatus = "Pathfinding"
 
-		local success, result = xpcall(function()
-			FarmStatus = "Pathfinding"
+		local waypoints = ComputeFarmPath(hrp.Position, destination)
 
-			local waypoints = ComputeFarmPath(hrp.Position, destination)
+		if not waypoints then
+			FarmLog("No path found, using noclip fallback")
+			return DirectFarmNoclipMove(targetPart)
+		end
 
-			if not waypoints then
-				task.wait(0.12)
-
-				character, humanoid, hrp = GetFarmCharacter()
-				if character and humanoid and humanoid.Health > 0 and hrp and targetPart.Parent then
-					destination = GetFarmPositionInFront(targetPart, hrp.Position)
-					waypoints = destination and ComputeFarmPath(hrp.Position, destination) or nil
-				end
-			end
-
-			if not waypoints then
-				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
-			end
-
-			for _, waypoint in ipairs(waypoints) do
-				if not Settings.FarmEnabled then
-					return false
-				end
-
-				character, humanoid, hrp = GetFarmCharacter()
-
-				if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
-					return false
-				end
-
-				KeepFarmTraversalNoclip(noclipParts)
-
-				if waypoint.Action == Enum.PathWaypointAction.Jump then
-					humanoid.Jump = true
-				end
-
-				humanoid:MoveTo(waypoint.Position)
-
-				local finished = false
-				local reached = false
-				local connection
-
-				connection = humanoid.MoveToFinished:Connect(function(didReach)
-					reached = didReach
-					finished = true
-				end)
-
-				local waypointStarted = tick()
-
-				while not finished and tick() - waypointStarted < 3.25 do
-					if not Settings.FarmEnabled or humanoid.Health <= 0 then
-						break
-					end
-
-					KeepFarmTraversalNoclip(noclipParts)
-					task.wait(0.05)
-				end
-
-				if connection then
-					connection:Disconnect()
-				end
-
-				if not reached then
-					return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
-				end
+		for _, waypoint in ipairs(waypoints) do
+			if not Settings.FarmEnabled then
+				return false
 			end
 
 			character, humanoid, hrp = GetFarmCharacter()
@@ -1089,62 +1076,124 @@ local Farm = (function()
 				return false
 			end
 
-			destination = GetFarmPositionInFront(targetPart, hrp.Position)
-
-			if not destination or (destination - hrp.Position).Magnitude > 7 then
-				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
+			if waypoint.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
 			end
 
-			return true
-		end, function(errorMessage)
-			return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
-		end)
+			humanoid:MoveTo(waypoint.Position)
 
-		if success then
-			finishedSuccessfully = result == true
-		else
-			FarmLog("Movement error: " .. tostring(result))
+			local finished = false
+			local reached = false
+			local connection
+
+			connection = humanoid.MoveToFinished:Connect(function(didReach)
+				reached = didReach
+				finished = true
+			end)
+
+			local waypointStarted = tick()
+
+			while not finished and tick() - waypointStarted < 3.5 do
+				if not Settings.FarmEnabled or humanoid.Health <= 0 then
+					break
+				end
+
+				if hrp and (hrp.Position - waypoint.Position).Magnitude <= 4.5 then
+					reached = true
+					finished = true
+					break
+				end
+
+				task.wait(0.05)
+			end
+
+			if connection then
+				connection:Disconnect()
+			end
+
+			if not reached then
+				FarmLog("Path blocked, using noclip fallback")
+				return DirectFarmNoclipMove(targetPart)
+			end
 		end
 
-		EndFarmTraversalNoclip(originalCanCollide)
-		FarmStatus = finishedSuccessfully and "Idle" or "Move failed"
+		character, humanoid, hrp = GetFarmCharacter()
 
-		return finishedSuccessfully
+		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
+			return false
+		end
+
+		destination = GetFarmPositionInFront(targetPart, hrp.Position)
+
+		if destination and (destination - hrp.Position).Magnitude <= 8 then
+			FarmStatus = "Idle"
+			return true
+		end
+
+		FarmLog("Path ended too far from target, using noclip fallback")
+		return DirectFarmNoclipMove(targetPart)
 	end
 
 	local function FindCrowbarDealer()
 		local map = workspace:FindFirstChild("Map")
-		local shops = map and map:FindFirstChild("Shopz")
+		local shops = map and map:FindFirstChild("Shopz", true)
 		local _, _, hrp = GetFarmCharacter()
-		if not shops or not hrp then return nil end
+
+		if not shops or not hrp then
+			return nil
+		end
+
 		local closestDealer = nil
 		local closestDistance = math.huge
+
 		for _, shop in ipairs(shops:GetChildren()) do
-			local stocks = shop:FindFirstChild("CurrentStocks")
+			local stocks = shop:FindFirstChild("CurrentStocks", true)
 			local stock = stocks and stocks:FindFirstChild("Crowbar")
-			local mainPart = shop:FindFirstChild("MainPart")
-			if stock and stock.Value > 0 and mainPart then
+			local mainPart = shop:FindFirstChild("MainPart", true)
+
+			if stock and stock.Value > 0 and mainPart and mainPart:IsA("BasePart") then
 				local distance = (hrp.Position - mainPart.Position).Magnitude
+
 				if distance < closestDistance then
 					closestDistance = distance
 					closestDealer = shop
 				end
 			end
 		end
+
 		return closestDealer
 	end
 
 	local function BuyFarmCrowbar()
 		local dealer = FindCrowbarDealer()
-		local mainPart = dealer and dealer:FindFirstChild("MainPart")
-		if not mainPart then return false end
+		local mainPart = dealer and dealer:FindFirstChild("MainPart", true)
+
+		if not mainPart or not mainPart:IsA("BasePart") then
+			FarmLog("Crowbar dealer not found")
+			return false
+		end
+
 		FarmStatus = "Buying Crowbar"
-		if not MoveToFarmTarget(mainPart) then return false end
+
+		if not MoveToFarmTarget(mainPart) then
+			FarmLog("Could not reach Crowbar dealer")
+			return false
+		end
+
 		local events = ReplicatedStorage:FindFirstChild("Events")
-		if not events then return false end
+
+		if not events then
+			FarmLog("ReplicatedStorage.Events not found")
+			return false
+		end
+
 		local openRemote = events:FindFirstChild("BYZERSPROTEC")
 		local buyRemote = events:FindFirstChild("SSHPRMTE1")
-		if not openRemote or not buyRemote then return false end
+
+		if not openRemote or not buyRemote then
+			FarmLog("Crowbar shop remotes not found")
+			return false
+		end
 		pcall(function()
 			RemoteSpy.Fire(openRemote, true, "shop", mainPart, "IllegalStore")
 		end)
@@ -1255,6 +1304,8 @@ local Farm = (function()
 	end
 
 	local function StartFarm()
+		Settings.FarmEnabled = true
+
 		if FarmLoopRunning then
 			FarmLog("Auto farm is already running")
 			return
@@ -1287,7 +1338,12 @@ local Farm = (function()
 					local targetObject, targetPart = GetNearestFarmTarget()
 
 					if not targetObject or not targetPart then
-						FarmStatus = "Waiting for target"
+						if not FindFarmFolder() then
+							FarmStatus = "BredMakurz missing"
+						else
+							FarmStatus = "Waiting for target"
+						end
+
 						task.wait(1)
 						return
 					end
