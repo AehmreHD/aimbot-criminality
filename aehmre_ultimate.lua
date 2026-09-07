@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - SYNTAX AUDIT FIX //
+-- // AEHMRE ULTIMATE HUB - AXE 1 SECOND THEN TELEPORT ABILITY FULL FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -242,7 +242,6 @@ local Settings = {
 	ESPEnabled = true,
 	ShowMarkedPlayerESP = false,
 	KillMarkedWithFireAxe = false,
-	FireAxeTeleportDelay = 0.5,
 	ShowESPUsername = false,
 	ESPUsernameSize = 14,
 	OffscreenWarning = true,
@@ -265,6 +264,12 @@ local Settings = {
 	ExploitSimDamage = false,
 	ExploitSimDamageAmount = 25,
 	PanicMode = false,
+	WalkSpeed = 16,
+	ApplyWalkSpeed = false,
+	Noclip = false,
+	NoclipSpeed = 30,
+	NoclipToggleKey = Enum.KeyCode.U,
+	MouseUnlockKey = Enum.KeyCode.M,
 	FarmAntiAFK = false,
 	FarmSafeESP = false,
 	FarmESPTextSize = 20,
@@ -725,7 +730,7 @@ SetBootStatus("Loading Farm...")
 local Farm = (function()
 	local FarmMoveSpeed = 22
 	local FarmPickupDistance = 8
-	local FarmIgnoreDuration = 60
+	local FarmIgnoreDuration = 12
 	local FarmLogHook = nil
 	local FarmLoopRunning = false
 	local FarmAutoMoneyRunning = false
@@ -734,6 +739,7 @@ local Farm = (function()
 	local FarmInvisAnimTrack = nil
 	local FarmInvisOriginalTransparency = {}
 	local FarmInvisParts = {}
+	local FarmInvisDescendantConnection = nil
 	local FarmSafeESPRunning = false
 	local FarmSafeESPElements = {}
 	local FarmPanicHealthConnection = nil
@@ -782,38 +788,71 @@ local Farm = (function()
 
 	local function FindFarmFolder()
 		if FarmFolderCache and FarmFolderCache.Parent then return FarmFolderCache end
-		if tick() - FarmFolderLastSearch < 2 then return nil end
-		FarmFolderLastSearch = tick()
+
+		if FarmFolderCache and not FarmFolderCache.Parent then
+			FarmFolderCache = nil
+			FarmFolderLastSearch = 0
+		end
+
 		local map = workspace:FindFirstChild("Map")
 		local filter = workspace:FindFirstChild("Filter")
 		local folder = (map and map:FindFirstChild("BredMakurz")) or (filter and filter:FindFirstChild("BredMakurz"))
-		if not folder then
+
+		if folder then
+			FarmFolderCache = folder
+			return folder
+		end
+
+		if FarmFolderLastSearch == 0 then
+			FarmFolderLastSearch = tick()
+
 			for _, object in ipairs(workspace:GetDescendants()) do
 				if object:IsA("Folder") and object.Name == "BredMakurz" then
-					folder = object
-					break
+					FarmFolderCache = object
+					return object
 				end
 			end
 		end
-		FarmFolderCache = folder
-		return folder
+
+		return nil
 	end
+
+	SafeConnect(workspace.DescendantAdded, function(object)
+		if object:IsA("Folder") and object.Name == "BredMakurz" then
+			FarmFolderCache = object
+			FarmFolderLastSearch = tick()
+		end
+	end)
 
 	local function IsFarmTargetAvailable(object)
 		if not object or not object.Parent then return false end
-		if FarmProcessed[object] then return false end
+
 		local ignoredUntil = FarmTempIgnored[object]
 		if ignoredUntil then
 			if tick() < ignoredUntil then return false end
 			FarmTempIgnored[object] = nil
 		end
+
 		local name = object.Name:lower()
 		if not name:find("safe") and not name:find("register") then return false end
+
 		local values = object:FindFirstChild("Values")
 		local broken = values and values:FindFirstChild("Broken")
-		if not broken or broken.Value then return false end
+		if not broken then return false end
+
+		if FarmProcessed[object] then
+			if broken.Value then
+				return false
+			end
+
+			FarmProcessed[object] = nil
+		end
+
+		if broken.Value then return false end
+
 		local mainPart = object:FindFirstChild("MainPart") or object.PrimaryPart or object:FindFirstChildOfClass("BasePart")
 		if not mainPart or mainPart.Position.Y < 4.8 then return false end
+
 		return true, mainPart
 	end
 
@@ -881,69 +920,196 @@ local Farm = (function()
 		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
 
+	local function BeginFarmTraversalNoclip(character)
+		local original = {}
+		local parts = {}
+
+		if not character then
+			return original, parts
+		end
+
+		for _, object in ipairs(character:GetDescendants()) do
+			if object:IsA("BasePart") then
+				original[object] = object.CanCollide
+				parts[#parts + 1] = object
+				object.CanCollide = false
+			end
+		end
+
+		return original, parts
+	end
+
+	local function KeepFarmTraversalNoclip(parts)
+		for _, part in ipairs(parts) do
+			if part and part.Parent and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+
+	local function EndFarmTraversalNoclip(original)
+		for part, canCollide in pairs(original) do
+			if part and part.Parent then
+				part.CanCollide = canCollide
+			end
+		end
+	end
+
+	local function DirectFarmNoclipMove(targetPart, original, parts)
+		local character, humanoid, hrp = GetFarmCharacter()
+
+		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
+			return false
+		end
+
+		FarmStatus = "Noclip fallback"
+
+		local started = tick()
+		local speed = math.max(FarmMoveSpeed * 2, math.min(tonumber(Settings.NoclipSpeed) or 30, 120))
+
+		while Settings.FarmEnabled and tick() - started < 15 do
+			character, humanoid, hrp = GetFarmCharacter()
+
+			if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart.Parent then
+				return false
+			end
+
+			KeepFarmTraversalNoclip(parts)
+
+			local destination = GetFarmPositionInFront(targetPart, hrp.Position)
+			if not destination then
+				return false
+			end
+
+			local offset = destination - hrp.Position
+			local distance = offset.Magnitude
+
+			if distance <= 4.5 then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+				return true
+			end
+
+			local dt = RunService.Heartbeat:Wait()
+			local stepDistance = math.min(distance, speed * math.max(dt, 1 / 240))
+			local nextPosition = hrp.Position + offset.Unit * stepDistance
+			local rotation = hrp.CFrame - hrp.CFrame.Position
+
+			hrp.CFrame = CFrame.new(nextPosition) * rotation
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		return false
+	end
+
 	local function MoveToFarmTarget(targetPart)
 		local character, humanoid, hrp = GetFarmCharacter()
-		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then return false end
+
+		if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart or not targetPart:IsA("BasePart") then
+			return false
+		end
 
 		local destination = GetFarmPositionInFront(targetPart, hrp.Position)
 		if not destination then return false end
 
-		FarmStatus = "Pathfinding"
+		local originalCanCollide, noclipParts = BeginFarmTraversalNoclip(character)
+		local finishedSuccessfully = false
 
-		local waypoints = ComputeFarmPath(hrp.Position, destination)
-		if not waypoints then
-			FarmStatus = "Path failed"
-			return false
-		end
+		local success, result = xpcall(function()
+			FarmStatus = "Pathfinding"
 
-		for _, waypoint in ipairs(waypoints) do
-			if not Settings.FarmEnabled then
-				FarmStatus = "Idle"
-				return false
+			local waypoints = ComputeFarmPath(hrp.Position, destination)
+
+			if not waypoints then
+				task.wait(0.12)
+
+				character, humanoid, hrp = GetFarmCharacter()
+				if character and humanoid and humanoid.Health > 0 and hrp and targetPart.Parent then
+					destination = GetFarmPositionInFront(targetPart, hrp.Position)
+					waypoints = destination and ComputeFarmPath(hrp.Position, destination) or nil
+				end
+			end
+
+			if not waypoints then
+				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
+			end
+
+			for _, waypoint in ipairs(waypoints) do
+				if not Settings.FarmEnabled then
+					return false
+				end
+
+				character, humanoid, hrp = GetFarmCharacter()
+
+				if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
+					return false
+				end
+
+				KeepFarmTraversalNoclip(noclipParts)
+
+				if waypoint.Action == Enum.PathWaypointAction.Jump then
+					humanoid.Jump = true
+				end
+
+				humanoid:MoveTo(waypoint.Position)
+
+				local finished = false
+				local reached = false
+				local connection
+
+				connection = humanoid.MoveToFinished:Connect(function(didReach)
+					reached = didReach
+					finished = true
+				end)
+
+				local waypointStarted = tick()
+
+				while not finished and tick() - waypointStarted < 3.25 do
+					if not Settings.FarmEnabled or humanoid.Health <= 0 then
+						break
+					end
+
+					KeepFarmTraversalNoclip(noclipParts)
+					task.wait(0.05)
+				end
+
+				if connection then
+					connection:Disconnect()
+				end
+
+				if not reached then
+					return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
+				end
 			end
 
 			character, humanoid, hrp = GetFarmCharacter()
-			if not character or not humanoid or humanoid.Health <= 0 or not hrp then
-				FarmStatus = "Idle"
+
+			if not character or not humanoid or humanoid.Health <= 0 or not hrp or not targetPart.Parent then
 				return false
 			end
 
-			if waypoint.Action == Enum.PathWaypointAction.Jump then
-				humanoid.Jump = true
+			destination = GetFarmPositionInFront(targetPart, hrp.Position)
+
+			if not destination or (destination - hrp.Position).Magnitude > 7 then
+				return DirectFarmNoclipMove(targetPart, originalCanCollide, noclipParts)
 			end
 
-			humanoid:MoveTo(waypoint.Position)
+			return true
+		end, function(errorMessage)
+			return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+		end)
 
-			local finished = false
-			local reached = false
-			local connection
-
-			connection = humanoid.MoveToFinished:Connect(function(didReach)
-				reached = didReach
-				finished = true
-			end)
-
-			local started = tick()
-
-			while not finished and tick() - started < 4 do
-				if not Settings.FarmEnabled or humanoid.Health <= 0 then
-					break
-				end
-				task.wait(0.05)
-			end
-
-			if connection then
-				connection:Disconnect()
-			end
-
-			if not reached then
-				FarmStatus = "Path blocked"
-				return false
-			end
+		if success then
+			finishedSuccessfully = result == true
+		else
+			FarmLog("Movement error: " .. tostring(result))
 		end
 
-		FarmStatus = "Idle"
-		return true
+		EndFarmTraversalNoclip(originalCanCollide)
+		FarmStatus = finishedSuccessfully and "Idle" or "Move failed"
+
+		return finishedSuccessfully
 	end
 
 	local function FindCrowbarDealer()
@@ -991,6 +1157,27 @@ local Farm = (function()
 			RemoteSpy.Fire(openRemote, false)
 		end)
 		task.wait(0.5)
+
+		if not HasFarmTool("Crowbar") then
+			task.wait(0.75)
+
+			pcall(function()
+				RemoteSpy.Fire(openRemote, true, "shop", mainPart, "IllegalStore")
+			end)
+
+			task.wait(0.5)
+
+			pcall(function()
+				RemoteSpy.Invoke(buyRemote, "IllegalStore", "Melees", "Crowbar", mainPart, nil, true)
+			end)
+
+			task.wait(1.5)
+
+			pcall(function()
+				RemoteSpy.Fire(openRemote, false)
+			end)
+		end
+
 		FarmStatus = "Idle"
 		return HasFarmTool("Crowbar") ~= nil
 	end
@@ -1033,7 +1220,7 @@ local Farm = (function()
 		FarmStatus = "Idle"
 		local values = targetObject:FindFirstChild("Values")
 		local broken = values and values:FindFirstChild("Broken")
-		return broken and broken.Value or hits > 0
+		return broken ~= nil and broken.Value == true
 	end
 
 	local function GetMoneyNearFarmTarget(targetObject)
@@ -1068,44 +1255,74 @@ local Farm = (function()
 	end
 
 	local function StartFarm()
-		if FarmLoopRunning then return end
+		if FarmLoopRunning then
+			FarmLog("Auto farm is already running")
+			return
+		end
+
 		FarmProcessed = {}
 		FarmTempIgnored = {}
 		FarmLoopRunning = true
 		FarmLog("Auto farm enabled")
+
 		task.spawn(function()
 			while FarmLoopRunning and Settings.FarmEnabled do
-				local character, humanoid = GetFarmCharacter()
-				if not character or not humanoid or humanoid.Health <= 0 then
-					FarmStatus = "Waiting for respawn"
-					task.wait(2)
-					continue
-				end
-				if not HasFarmTool("Crowbar") then
-					if not BuyFarmCrowbar() then
-						FarmStatus = "Crowbar unavailable"
-						task.wait(4)
-						continue
+				local cycleSuccess, cycleError = xpcall(function()
+					local character, humanoid = GetFarmCharacter()
+
+					if not character or not humanoid or humanoid.Health <= 0 then
+						FarmStatus = "Waiting for respawn"
+						task.wait(1)
+						return
 					end
-				end
-				local targetObject, targetPart = GetNearestFarmTarget()
-				if not targetObject or not targetPart then
-					FarmStatus = "No targets"
-					task.wait(3)
-					continue
-				end
-				if MoveToFarmTarget(targetPart) then
+
+					if not HasFarmTool("Crowbar") then
+						if not BuyFarmCrowbar() then
+							FarmStatus = "Crowbar unavailable"
+							task.wait(1.5)
+							return
+						end
+					end
+
+					local targetObject, targetPart = GetNearestFarmTarget()
+
+					if not targetObject or not targetPart then
+						FarmStatus = "Waiting for target"
+						task.wait(1)
+						return
+					end
+
+					if not MoveToFarmTarget(targetPart) then
+						FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+						task.wait(0.35)
+						return
+					end
+
+					if not targetObject.Parent then
+						task.wait(0.2)
+						return
+					end
+
 					if HackFarmTarget(targetObject) then
 						CollectFarmMoney(targetObject)
 						FarmProcessed[targetObject] = true
+						FarmTempIgnored[targetObject] = nil
 					else
 						FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
 					end
-				else
-					FarmTempIgnored[targetObject] = tick() + FarmIgnoreDuration
+
+					task.wait(0.35)
+				end, function(errorMessage)
+					return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+				end)
+
+				if not cycleSuccess then
+					FarmStatus = "Retrying"
+					FarmLog("Farm cycle recovered from error: " .. tostring(cycleError))
+					task.wait(1)
 				end
-				task.wait(0.5)
 			end
+
 			FarmLoopRunning = false
 			FarmStatus = "Idle"
 		end)
@@ -1208,6 +1425,44 @@ local Farm = (function()
 			FarmInvisHrp = nil
 			FarmInvisHumanoid = nil
 		end
+	end
+
+	local function ClearFarmInvisPartCache(restore)
+		if FarmInvisDescendantConnection then
+			FarmInvisDescendantConnection:Disconnect()
+			FarmInvisDescendantConnection = nil
+		end
+
+		if restore then
+			for part, transparency in pairs(FarmInvisOriginalTransparency) do
+				if part and part.Parent then
+					part.Transparency = transparency
+				end
+			end
+		end
+
+		FarmInvisOriginalTransparency = {}
+		FarmInvisParts = {}
+	end
+
+	local function CacheFarmInvisParts()
+		ClearFarmInvisPartCache(false)
+
+		if not FarmInvisCharacter then return end
+
+		for _, object in ipairs(FarmInvisCharacter:GetDescendants()) do
+			if object:IsA("BasePart") then
+				FarmInvisOriginalTransparency[object] = object.Transparency
+				FarmInvisParts[#FarmInvisParts + 1] = object
+			end
+		end
+
+		FarmInvisDescendantConnection = FarmInvisCharacter.DescendantAdded:Connect(function(object)
+			if object:IsA("BasePart") and FarmInvisOriginalTransparency[object] == nil then
+				FarmInvisOriginalTransparency[object] = object.Transparency
+				FarmInvisParts[#FarmInvisParts + 1] = object
+			end
+		end)
 	end
 
 	local function EnsureFarmInvisWarning()
@@ -1381,13 +1636,7 @@ local Farm = (function()
 			Camera.CameraSubject = FarmInvisHumanoid
 		end
 
-		if FarmInvisCharacter then
-			for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
-				if part:IsA("BasePart") and part.Transparency == 0.5 then
-					part.Transparency = 0
-				end
-			end
-		end
+		ClearFarmInvisPartCache(true)
 
 		if FarmInvisWarningLabel then
 			FarmInvisWarningLabel.Visible = false
@@ -1432,6 +1681,7 @@ local Farm = (function()
 
 		FarmInvisPossible = true
 		Camera.CameraSubject = FarmInvisHrp
+		CacheFarmInvisParts()
 		LoadFarmInvisAnimation()
 
 		FarmInvisConnection = RunService.Heartbeat:Connect(function(dt)
@@ -1474,6 +1724,7 @@ local Farm = (function()
 
 				FarmInvisPossible = true
 				Camera.CameraSubject = FarmInvisHrp
+				CacheFarmInvisParts()
 				LoadFarmInvisAnimation()
 			end
 
@@ -1552,11 +1803,9 @@ local Farm = (function()
 				end
 			end
 
-			if FarmInvisCharacter then
-				for _, part in pairs(FarmInvisCharacter:GetDescendants()) do
-					if part:IsA("BasePart") and part.Transparency ~= 1 then
-						part.Transparency = 0.5
-					end
+			for _, part in ipairs(FarmInvisParts) do
+				if part and part.Parent and part.Transparency ~= 1 and part.Transparency ~= 0.5 then
+					part.Transparency = 0.5
 				end
 			end
 		end)
@@ -1576,15 +1825,20 @@ local Farm = (function()
 		if FarmPanicTriggeredForLife then return end
 
 		FarmPanicTriggeredForLife = true
+		Settings.PanicMode = true
 
 		if Settings.FarmInvisibility then
 			FarmLog("PanicMode triggered, invisibility was already enabled")
+			if ConfigUIUpdaters.PanicMode then
+				ConfigUIUpdaters.PanicMode()
+			end
 			return
 		end
 
 		Settings.FarmInvisibility = true
 		FarmPanicActivatedInvisibility = true
 		EnableFarmInvisibility()
+		Settings.PanicMode = true
 
 		if not Settings.FarmInvisibility then
 			FarmPanicActivatedInvisibility = false
@@ -1594,6 +1848,10 @@ local Farm = (function()
 		end
 
 		RefreshFarmInvisibilityUI()
+
+		if ConfigUIUpdaters.PanicMode then
+			ConfigUIUpdaters.PanicMode()
+		end
 	end
 
 	local function CheckFarmPanicHealth(humanoid)
@@ -1643,12 +1901,19 @@ local Farm = (function()
 		if FarmPanicCharacterConnection then return end
 
 		FarmPanicCharacterConnection = LocalPlayer.CharacterAdded:Connect(function(character)
+			local keepPanicMode = Settings.PanicMode
 			FarmPanicTriggeredForLife = false
 
 			if FarmPanicActivatedInvisibility then
 				FarmPanicActivatedInvisibility = false
 				DisableFarmInvisibility()
 				RefreshFarmInvisibilityUI()
+			end
+
+			Settings.PanicMode = keepPanicMode
+
+			if ConfigUIUpdaters.PanicMode then
+				ConfigUIUpdaters.PanicMode()
 			end
 
 			if Settings.PanicMode then
@@ -2344,23 +2609,30 @@ local KillMarkedFireAxeRunning = false
 
 local function FireAxeLog(message)
 	print("[FireAxe]", message)
-	SystemLogEvent(message)
+	pcall(SystemLogEvent, message)
 end
 
 local function ActivateFireAxe(axe)
-	if axe and axe:IsA("Tool") then
-		local ok = pcall(function()
-			axe:Activate()
-		end)
-
-		if ok then
-			return true
-		end
+	if not axe or not axe:IsA("Tool") or axe.Parent ~= LocalPlayer.Character then
+		return false
 	end
 
-	ControlClick(true)
-	task.wait(0.04)
-	ControlClick(false)
+	local success = pcall(function()
+		axe:Activate()
+	end)
+
+	if not success then
+		return false
+	end
+
+	task.delay(0.1, function()
+		if axe and axe.Parent == LocalPlayer.Character then
+			pcall(function()
+				axe:Deactivate()
+			end)
+		end
+	end)
+
 	return true
 end
 
@@ -2370,6 +2642,11 @@ local function UpdateKillMarkedFireAxeUI()
 	if ConfigUIUpdaters.KillMarkedWithFireAxe then
 		ConfigUIUpdaters.KillMarkedWithFireAxe()
 	end
+end
+
+local function FinishKillMarkedFireAxe()
+	KillMarkedFireAxeRunning = false
+	UpdateKillMarkedFireAxeUI()
 end
 
 local function NormalizeToolText(value)
@@ -2383,8 +2660,11 @@ local function IsFireAxeTool(object)
 	local toolTip = NormalizeToolText(object.ToolTip)
 
 	return name == "fireaxe"
+		or name == "sledgehammer"
 		or name:find("fireaxe", 1, true) ~= nil
 		or toolTip:find("fireaxe", 1, true) ~= nil
+		or name:find("sledgehammer", 1, true) ~= nil
+		or toolTip:find("sledgehammer", 1, true) ~= nil
 		or name:find("axe", 1, true) ~= nil
 		or toolTip:find("axe", 1, true) ~= nil
 end
@@ -2437,95 +2717,109 @@ local function KillMarkedPlayerWithFireAxe()
 
 	KillMarkedFireAxeRunning = true
 
-	local targetPlayer = MarkedESP.SelectedPlayer
+	local success, err = xpcall(function()
+		local targetPlayer = MarkedESP.SelectedPlayer
 
-	if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
-		FireAxeLog("Fire Axe action cancelled: no marked player selected.")
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
+		if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
+			FireAxeLog("Axe/Sledgehammer action cancelled: no marked player selected.")
+			return
+		end
+
+		FireAxeLog("Axe/Sledgehammer action started. Waiting 1 second.")
+		task.wait(1)
+
+		if not targetPlayer or targetPlayer == LocalPlayer or targetPlayer.Parent ~= Players then
+			FireAxeLog("Axe/Sledgehammer action cancelled after wait: marked player unavailable.")
+			return
+		end
+
+		local character = LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local localRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+		local targetCharacter = targetPlayer.Character
+		local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+		local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+		if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled: local character unavailable.")
+			return
+		end
+
+		if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled: marked player's HumanoidRootPart is unavailable.")
+			return
+		end
+
+		local axe = GetFireAxe()
+
+		if not axe then
+			local equipped = GetSingleEquippedTool(character)
+			local equippedName = equipped and equipped.Name or "none"
+			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool not found. Equipped Tool=" .. equippedName)
+			return
+		end
+
+		if axe.Parent ~= character then
+			local equipSuccess = pcall(function()
+				humanoid:EquipTool(axe)
+			end)
+
+			if not equipSuccess then
+				FireAxeLog("Axe/Sledgehammer action cancelled: supported tool could not be equipped.")
+				return
+			end
+
+			task.wait()
+		end
+
+		character = LocalPlayer.Character
+		humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		localRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+		targetCharacter = targetPlayer.Character
+		targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+		targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+		axe = FindFireAxe(character) or GetSingleEquippedTool(character) or axe
+
+		if not humanoid or humanoid.Health <= 0 or not localRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled after equip: local character unavailable.")
+			return
+		end
+
+		if not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
+			FireAxeLog("Axe/Sledgehammer action cancelled after equip: marked player's HumanoidRootPart is unavailable.")
+			return
+		end
+
+		if not axe or axe.Parent ~= character then
+			FireAxeLog("Axe/Sledgehammer action cancelled: supported tool was not equipped.")
+			return
+		end
+
+		localRoot.CFrame = targetRoot.CFrame
+		localRoot.AssemblyLinearVelocity = Vector3.zero
+		localRoot.AssemblyAngularVelocity = Vector3.zero
+
+		if not ActivateFireAxe(axe) then
+			FireAxeLog("Axe/Sledgehammer action cancelled: Tool:Activate() failed.")
+			return
+		end
+
+		FireAxeLog(string.format(
+			"Axe/Sledgehammer used on marked player: %s | waited 1 second | teleported into HumanoidRootPart | Tool:Activate()",
+			targetPlayer.Name
+		))
+	end, function(errorMessage)
+		return debug and debug.traceback and debug.traceback(tostring(errorMessage), 2) or tostring(errorMessage)
+	end)
+
+	FinishKillMarkedFireAxe()
+
+	if not success then
+		FireAxeLog("Axe/Sledgehammer action error: " .. tostring(err))
 	end
-
-	local character = LocalPlayer.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local localRoot = character and GetCharacterRoot(character)
-
-	local targetCharacter = targetPlayer.Character
-	local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-	local targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
-
-	if not character or not humanoid or humanoid.Health <= 0 or not localRoot then
-		FireAxeLog("Fire Axe action cancelled: local character unavailable.")
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
-	end
-
-	if not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-		FireAxeLog("Fire Axe action cancelled: marked player unavailable.")
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
-	end
-
-	local axe = GetFireAxe()
-
-	if not axe then
-		local equipped = GetSingleEquippedTool(character)
-		local equippedName = equipped and equipped.Name or "none"
-
-		FireAxeLog("Fire Axe action cancelled: Fire Axe not found. Equipped Tool=" .. equippedName)
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
-	end
-
-	if axe.Parent ~= character then
-		pcall(function()
-			humanoid:EquipTool(axe)
-		end)
-		task.wait(0.15)
-	end
-
-	axe = character:FindFirstChild("Fire Axe") or axe
-
-	if not axe or axe.Parent ~= character then
-		FireAxeLog("Fire Axe action cancelled: Fire Axe could not be equipped.")
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
-	end
-
-	FireAxeLog("Fire Axe equipped. Starting attack before teleport.")
-	ActivateFireAxe(axe)
-
-	local delayTime = math.clamp(Settings.FireAxeTeleportDelay, 0.1, 5)
-	FireAxeLog(string.format("Waiting %.1fs before teleport.", delayTime))
-	task.wait(delayTime)
-
-	character = LocalPlayer.Character
-	humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	localRoot = character and GetCharacterRoot(character)
-
-	targetCharacter = targetPlayer.Character
-	targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-	targetRoot = targetCharacter and GetCharacterRoot(targetCharacter)
-
-	if not humanoid or humanoid.Health <= 0 or not localRoot or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then
-		FireAxeLog("Fire Axe action cancelled during delay: character or target unavailable.")
-		KillMarkedFireAxeRunning = false
-		UpdateKillMarkedFireAxeUI()
-		return
-	end
-
-	localRoot.CFrame = targetRoot.CFrame
-	localRoot.AssemblyLinearVelocity = Vector3.zero
-	localRoot.AssemblyAngularVelocity = Vector3.zero
-
-	FireAxeLog(string.format("Teleported to marked player during Fire Axe attack: %s (delay %.1fs)", targetPlayer.Name, delayTime))
-
-	KillMarkedFireAxeRunning = false
-	UpdateKillMarkedFireAxeUI()
 end
 
 local function GetExploitSimHitRemote()
@@ -2550,6 +2844,237 @@ local function ExploitSimHitTarget(target)
 	RemoteSpy.Fire(remote, target, Settings.ExploitSimDamageAmount)
 	return true
 end
+
+local NoclipSystem = (function()
+	local State = {
+		Character = nil,
+		Humanoid = nil,
+		OriginalWalkSpeed = nil,
+		OriginalCanCollide = {},
+		Parts = {},
+		DescendantConnection = nil
+	}
+
+	local function DisconnectDescendantConnection()
+		if State.DescendantConnection then
+			State.DescendantConnection:Disconnect()
+			State.DescendantConnection = nil
+		end
+	end
+
+	local function RestoreParts()
+		for part, canCollide in pairs(State.OriginalCanCollide) do
+			if part and part.Parent then
+				part.CanCollide = canCollide
+			end
+		end
+
+		State.OriginalCanCollide = {}
+		State.Parts = {}
+	end
+
+	local function TrackPart(object)
+		if not object or not object:IsA("BasePart") then return end
+		if State.OriginalCanCollide[object] ~= nil then return end
+
+		State.OriginalCanCollide[object] = object.CanCollide
+		State.Parts[#State.Parts + 1] = object
+	end
+
+	local function BindCharacter(character)
+		if State.Character == character then return end
+
+		DisconnectDescendantConnection()
+		RestoreParts()
+
+		State.Character = character
+		State.Humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
+		State.OriginalWalkSpeed = State.Humanoid and State.Humanoid.WalkSpeed or nil
+
+		if not character then return end
+
+		for _, object in ipairs(character:GetDescendants()) do
+			TrackPart(object)
+		end
+
+		State.DescendantConnection = character.DescendantAdded:Connect(TrackPart)
+	end
+
+	local function Apply()
+		if not Settings.Noclip then return end
+
+		local character = LocalPlayer.Character
+		if not character then return end
+
+		BindCharacter(character)
+
+		local humanoid = State.Humanoid
+		if not humanoid or humanoid.Health <= 0 then return end
+
+		for _, object in ipairs(State.Parts) do
+			if object and object.Parent and object.CanCollide then
+				object.CanCollide = false
+			end
+		end
+
+		local speed = math.clamp(tonumber(Settings.NoclipSpeed) or 30, 5, 1000)
+		Settings.NoclipSpeed = speed
+
+		if humanoid.WalkSpeed ~= speed then
+			humanoid.WalkSpeed = speed
+		end
+	end
+
+	local function Enable()
+		Settings.Noclip = true
+		BindCharacter(LocalPlayer.Character)
+		Apply()
+	end
+
+	local function Disable()
+		Settings.Noclip = false
+		DisconnectDescendantConnection()
+		RestoreParts()
+
+		local humanoid = State.Humanoid
+
+		if humanoid and humanoid.Parent then
+			if Settings.ApplyWalkSpeed then
+				humanoid.WalkSpeed = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+			elseif State.OriginalWalkSpeed ~= nil then
+				humanoid.WalkSpeed = State.OriginalWalkSpeed
+			end
+		end
+
+		State.Character = nil
+		State.Humanoid = nil
+		State.OriginalWalkSpeed = nil
+	end
+
+	SafeConnect(RunService.Stepped, function()
+		Apply()
+	end)
+
+	SafeConnect(LocalPlayer.CharacterAdded, function(character)
+		DisconnectDescendantConnection()
+		RestoreParts()
+		State.Character = nil
+		State.Humanoid = nil
+		State.OriginalWalkSpeed = nil
+
+		if Settings.Noclip then
+			task.defer(function()
+				BindCharacter(character)
+				Apply()
+			end)
+		end
+	end)
+
+	return {
+		Enable = Enable,
+		Disable = Disable,
+		Apply = Apply
+	}
+end)()
+if Settings.Noclip then
+	NoclipSystem.Enable()
+end
+
+
+UI.MouseUnlockGui = Instance.new("ScreenGui")
+UI.MouseUnlockGui.Name = "AehmreMouseUnlockGui"
+UI.MouseUnlockGui.ResetOnSpawn = false
+UI.MouseUnlockGui.IgnoreGuiInset = true
+UI.MouseUnlockGui.DisplayOrder = 1000001
+UI.MouseUnlockGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+UI.MouseUnlockGui.Parent = PlayerGui
+
+UI.MouseUnlockButton = Instance.new("TextButton")
+UI.MouseUnlockButton.Name = "MouseUnlockModal"
+UI.MouseUnlockButton.Size = UDim2.fromOffset(1, 1)
+UI.MouseUnlockButton.Position = UDim2.fromOffset(0, 0)
+UI.MouseUnlockButton.BackgroundTransparency = 1
+UI.MouseUnlockButton.TextTransparency = 1
+UI.MouseUnlockButton.Text = ""
+UI.MouseUnlockButton.BorderSizePixel = 0
+UI.MouseUnlockButton.AutoButtonColor = false
+UI.MouseUnlockButton.Active = true
+UI.MouseUnlockButton.Selectable = false
+UI.MouseUnlockButton.Visible = true
+UI.MouseUnlockButton.Modal = false
+UI.MouseUnlockButton.Parent = UI.MouseUnlockGui
+
+UI.MouseUnlockState = {
+	Unlocked = false,
+	PreviousMouseBehavior = nil,
+	PreviousMouseIconEnabled = nil
+}
+
+UI.SetMouseUnlocked = function(unlocked)
+	unlocked = unlocked == true
+
+	if unlocked == UI.MouseUnlockState.Unlocked then
+		return
+	end
+
+	UI.MouseUnlockState.Unlocked = unlocked
+
+	if unlocked then
+		UI.MouseUnlockState.PreviousMouseBehavior = UserInputService.MouseBehavior
+		UI.MouseUnlockState.PreviousMouseIconEnabled = UserInputService.MouseIconEnabled
+
+		if UI.MouseUnlockButton then
+			UI.MouseUnlockButton.Visible = true
+			UI.MouseUnlockButton.Modal = true
+		end
+
+		pcall(function()
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end)
+	else
+		if UI.MouseUnlockButton then
+			UI.MouseUnlockButton.Modal = false
+		end
+
+		pcall(function()
+			if UI.MouseUnlockState.PreviousMouseBehavior ~= nil then
+				UserInputService.MouseBehavior = UI.MouseUnlockState.PreviousMouseBehavior
+			end
+
+			if UI.MouseUnlockState.PreviousMouseIconEnabled ~= nil then
+				UserInputService.MouseIconEnabled = UI.MouseUnlockState.PreviousMouseIconEnabled
+			end
+		end)
+
+		UI.MouseUnlockState.PreviousMouseBehavior = nil
+		UI.MouseUnlockState.PreviousMouseIconEnabled = nil
+	end
+end
+
+SafeConnect(RunService.RenderStepped, function()
+	if not UI.MouseUnlockState.Unlocked then return end
+
+	if UI.MouseUnlockButton then
+		if not UI.MouseUnlockButton.Visible then
+			UI.MouseUnlockButton.Visible = true
+		end
+
+		if not UI.MouseUnlockButton.Modal then
+			UI.MouseUnlockButton.Modal = true
+		end
+	end
+
+	pcall(function()
+		if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+
+		if not UserInputService.MouseIconEnabled then
+			UserInputService.MouseIconEnabled = true
+		end
+	end)
+end)
 
 --// Structural Execution Lifecycle Cleanup Core
 local function UniversalDestruct()
@@ -2579,6 +3104,18 @@ local function UniversalDestruct()
 	end
 
 	UpdateFullbright(false)
+	NoclipSystem.Disable()
+	pcall(function()
+		if UI.SetMouseUnlocked then
+			UI.SetMouseUnlocked(false)
+		end
+
+		if UI.MouseUnlockGui then
+			UI.MouseUnlockGui:Destroy()
+			UI.MouseUnlockGui = nil
+			UI.MouseUnlockButton = nil
+		end
+	end)
 	Farm.Cleanup()
 	WispAllESPRemnants()
 end
@@ -3027,13 +3564,19 @@ UpdateLeftPanelShortcuts = function()
 			UI.ShortcutList.Text = string.format("[TOUCH] Aim Lock: %s\n[TOUCH] Toggle UI", statusText)
 		else
 			local invisStatus = Settings.FarmInvisibility and "ON" or "OFF"
+			local noclipStatus = Settings.Noclip and "ON" or "OFF"
+			local mouseStatus = UI.MouseUnlockState and UI.MouseUnlockState.Unlocked and "UNLOCKED" or "LOCKED"
 			UI.ShortcutList.Text = string.format(
-				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s",
+				"[%s] Aim Lock: %s\n[%s] Toggle UI\n[%s] Invisibility: %s\n[%s] Noclip: %s\n[%s] Mouse: %s",
 				GetKeybindName(Settings.AimKey),
 				statusText,
 				GetKeybindName(Settings.ToggleUiKey),
 				GetKeybindName(Settings.FarmInvisToggleKey),
-				invisStatus
+				invisStatus,
+				GetKeybindName(Settings.NoclipToggleKey),
+				noclipStatus,
+				GetKeybindName(Settings.MouseUnlockKey),
+				mouseStatus
 			)
 		end
 	end
@@ -3113,7 +3656,7 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		local configKey = capture.ConfigKey
 		local previousKey = Settings[configKey]
-		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey"}
+		local keybindConfigKeys = {"AimKey", "ToggleUiKey", "FarmInvisToggleKey", "NoclipToggleKey", "MouseUnlockKey"}
 
 		for _, otherConfigKey in ipairs(keybindConfigKeys) do
 			if otherConfigKey ~= configKey and Settings[otherConfigKey] == input.KeyCode then
@@ -3154,6 +3697,28 @@ SafeConnect(UserInputService.InputBegan, function(input, processed)
 
 		UpdateLeftPanelShortcuts()
 		SystemLogEvent("Invisibility toggled " .. (Settings.FarmInvisibility and "ON" or "OFF") .. ".")
+	end
+
+	if AccessNoticeDismissed and input.KeyCode == Settings.NoclipToggleKey then
+		if Settings.Noclip then
+			NoclipSystem.Disable()
+		else
+			NoclipSystem.Enable()
+		end
+
+		if ConfigUIUpdaters.Noclip then
+			ConfigUIUpdaters.Noclip()
+		end
+
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent("Noclip toggled " .. (Settings.Noclip and "ON" or "OFF") .. ".")
+	end
+
+	if input.KeyCode == Settings.MouseUnlockKey then
+		local nextState = not (UI.MouseUnlockState and UI.MouseUnlockState.Unlocked)
+		UI.SetMouseUnlocked(nextState)
+		UpdateLeftPanelShortcuts()
+		SystemLogEvent("Mouse " .. (nextState and "unlocked" or "locked") .. ".")
 	end
 end)
 
@@ -3382,7 +3947,17 @@ local function UpdateOffscreenWarnings()
 		end
 	end
 end
-SafeConnect(RunService.RenderStepped, UpdateOffscreenWarnings)
+UI.OffscreenUpdateAccumulator = 0
+SafeConnect(RunService.RenderStepped, function(dt)
+	UI.OffscreenUpdateAccumulator += dt
+
+	if UI.OffscreenUpdateAccumulator < 0.05 then
+		return
+	end
+
+	UI.OffscreenUpdateAccumulator = 0
+	UpdateOffscreenWarnings()
+end)
 
 UI.MainFrame = Instance.new("Frame", UI.ScreenGui)
 UI.MainFrame.Name = "UI.MainFrame"
@@ -3689,8 +4264,8 @@ UI.RightContentWindow.Position = UDim2.new(0, 165, 0, 0)
 UI.RightContentWindow.BackgroundTransparency = 1
 
 UI.ShortcutsFrame = Instance.new("Frame", UI.Sidebar)
-UI.ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 50)
-UI.ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -95)
+UI.ShortcutsFrame.Size = UDim2.new(0.84, 0, 0, 68)
+UI.ShortcutsFrame.Position = UDim2.new(0.08, 0, 1, -112)
 UI.ShortcutsFrame.BackgroundTransparency = 1
 
 UI.ShortcutTitle = Instance.new("TextLabel", UI.ShortcutsFrame)
@@ -3821,6 +4396,8 @@ UI.CustPage = RegisterTabContainerPage("Customization")
 UI.KeybindPage = RegisterTabContainerPage("Keybinds")
 UI.TestPage = RegisterTabContainerPage("Lighting & Enviroment")
 UI.FarmPage = RegisterTabContainerPage("Farm")
+UI.PlayerPage = RegisterTabContainerPage("Player / Character")
+UI.DevPage = RegisterTabContainerPage("Developer")
 UI.SettPage = RegisterTabContainerPage("Settings")
 
 UI.SystemLogEntries = {}
@@ -4006,6 +4583,82 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 
 	ConfigUIUpdaters[configKey] = UpdateToggleFromSetting
 	table.insert(UIUpdaters, UpdateToggleFromSetting)
+end
+
+
+UI.AddActionButton = function(parentPage, displayTitle, desc, subDesc, callback)
+	local Card = Instance.new("TextButton", parentPage)
+	Card.Size = UDim2.new(0.94, 0, 0, 56)
+	Card.BackgroundColor3 = Styles.CardBg
+	Card.BorderSizePixel = 0
+	Card.Text = ""
+	Card.AutoButtonColor = false
+	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
+
+	local Stroke = Instance.new("UIStroke", Card)
+	ApplyPaletteStroke(Stroke)
+
+	local TitleLabel = Instance.new("TextLabel", Card)
+	TitleLabel.Size = UDim2.new(0.9, 0, 0, 18)
+	TitleLabel.Position = UDim2.new(0.03, 0, 0.08, 0)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = displayTitle
+	TitleLabel.Font = Enum.Font.GothamSemibold
+	TitleLabel.TextSize = 12
+	TitleLabel.TextColor3 = Styles.TextMain
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local DescLabel = Instance.new("TextLabel", Card)
+	DescLabel.Size = UDim2.new(0.9, 0, 0, 14)
+	DescLabel.Position = UDim2.new(0.03, 0, 0.38, 0)
+	DescLabel.BackgroundTransparency = 1
+	DescLabel.Text = desc
+	DescLabel.Font = Enum.Font.Gotham
+	DescLabel.TextSize = 9
+	DescLabel.TextColor3 = Styles.TextDark
+	DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	local SubLabel = Instance.new("TextLabel", Card)
+	SubLabel.Size = UDim2.new(0.9, 0, 0, 14)
+	SubLabel.Position = UDim2.new(0.03, 0, 0.64, 0)
+	SubLabel.BackgroundTransparency = 1
+	SubLabel.Text = subDesc
+	SubLabel.Font = Enum.Font.Gotham
+	SubLabel.TextSize = 9
+	SubLabel.TextColor3 = Styles.Accent
+	SubLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+	Card.MouseEnter:Connect(function()
+		TweenObj(Stroke, { Color = Styles.Accent }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardHover }, 0.2)
+	end)
+
+	Card.MouseLeave:Connect(function()
+		TweenObj(Stroke, { Color = GetPaletteStrokeColor(Stroke) }, 0.2)
+		TweenObj(Card, { BackgroundColor3 = Styles.CardBg }, 0.2)
+	end)
+
+	local ButtonScale = Instance.new("UIScale", Card)
+
+	Card.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			TweenObj(ButtonScale, { Scale = 0.97 }, 0.08)
+		end
+	end)
+
+	Card.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			TweenObj(ButtonScale, { Scale = 1 }, 0.12)
+		end
+	end)
+
+	Card.Activated:Connect(function()
+		if callback then
+			callback()
+		end
+	end)
+
+	return Card
 end
 
 local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max, desc, subDesc, customCallback, decimalPlaces)
@@ -4613,7 +5266,6 @@ local function AddMarkedPlayerDropdown(parentPage)
 	end
 
 	table.insert(UIUpdaters, function()
-		ResetMarkedPlayerSelection()
 		UpdateSelectionUI()
 	end)
 end
@@ -4654,15 +5306,11 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Fire Axe", "Equips Fire Axe, starts the click/ability, waits, then teleports to the marked player's HumanoidRootPart.", "Requires a marked player. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Waits 1 second after activation, then equips the tool, teleports into the marked player's HumanoidRootPart and activates it.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
 end)
-
-AddDashboardSlider(UI.VisPage, "FireAxeTeleportDelay", "Fire Axe Teleport Delay", 0.1, 5, "Delay after the click starts before teleporting to the marked player.", "Default: 0.5 seconds. Range: 0.1 - 5.0 seconds.", function(value)
-	Settings.FireAxeTeleportDelay = math.clamp(value, 0.1, 5)
-end, 1)
 
 AddDashboardButton(UI.VisPage, "OffscreenWarning", "Off-Screen Player Warning", "Shows a warning icon at the screen edge for enemy players outside the camera view.", "Blinks when that player is looking at you with a clear raycast.", function()
 	UpdateOffscreenWarnings()
@@ -4735,38 +5383,6 @@ AddDashboardButton(UI.FarmPage, "FarmAntiAFK", "Anti-AFK", "Prevents the idle ki
 	if enabled then Farm.EnableAntiAFK() else Farm.DisableAntiAFK() end
 end)
 
-UI.ResetCharacterBtn = Instance.new("TextButton", UI.FarmPage)
-UI.ResetCharacterBtn.Size = UDim2.new(0.94, 0, 0, 36)
-UI.ResetCharacterBtn.BackgroundColor3 = Styles.CardBg
-UI.ResetCharacterBtn.Font = Enum.Font.GothamBold
-UI.ResetCharacterBtn.TextColor3 = Styles.TextMain
-UI.ResetCharacterBtn.Text = "Reset Character"
-UI.ResetCharacterBtn.TextSize = 10
-UI.ResetCharacterBtn.BorderSizePixel = 0
-UI.ResetCharacterBtn.AutoButtonColor = false
-Instance.new("UICorner", UI.ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
-
-UI.ResetCharacterStroke = Instance.new("UIStroke", UI.ResetCharacterBtn)
-ApplyPaletteStroke(UI.ResetCharacterStroke)
-HookButtonAnimations(UI.ResetCharacterBtn, Styles.CardBg, Styles.CardHover)
-
-UI.ResetCharacterBtn.MouseButton1Click:Connect(function()
-	local character = LocalPlayer.Character
-	if not character then return end
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-
-	if humanoid then
-		humanoid.Health = 0
-	end
-
-	pcall(function()
-		character:BreakJoints()
-	end)
-
-	SystemLogEvent("Character reset requested.")
-end)
-
 AddDashboardButton(UI.VisPage, "FarmSafeESP", "Safe / Register ESP", "Highlights farm safes and registers.", "Green = available, red = broken.", function(enabled)
 	if enabled then Farm.EnableSafeESP() else Farm.DisableSafeESP() end
 end)
@@ -4787,6 +5403,119 @@ AddDashboardButton(UI.CustPage, "EnableRemoteSpy", "Enable Remote Spy", "Logs Ul
 		print("[RemoteSpy] DISABLED")
 	end
 end)
+
+
+UI.AddActionButton(
+	UI.DevPage,
+	"Open Developer Console",
+	"Opens the Roblox Developer Console instantly.",
+	"Useful on mobile instead of typing /console.",
+	function()
+		task.spawn(function()
+			local StarterGui = game:GetService("StarterGui")
+			local opened = false
+			local lastError = nil
+
+			for _ = 1, 3 do
+				local success, err = pcall(function()
+					StarterGui:SetCore("DevConsoleVisible", true)
+				end)
+
+				if success then
+					opened = true
+					break
+				end
+
+				lastError = err
+				task.wait(0.15)
+			end
+
+			if opened then
+				SystemLogEvent("Developer Console opened.")
+			else
+				SystemLogEvent("Developer Console could not be opened: " .. tostring(lastError))
+			end
+		end)
+	end
+)
+
+
+AddDashboardSlider(
+	UI.PlayerPage,
+	"WalkSpeed",
+	"WalkSpeed",
+	0.1,
+	1000000,
+	"Sets the WalkSpeed value that will be applied to your current Humanoid.",
+	"Range: 0.1 - 1,000,000. Default: 16.",
+	function(value)
+		Settings.WalkSpeed = math.clamp(value, 0.1, 1000000)
+	end,
+	1
+)
+
+AddDashboardButton(
+	UI.PlayerPage,
+	"ApplyWalkSpeed",
+	"Apply WalkSpeed",
+	"Continuously applies the selected WalkSpeed while enabled.",
+	"Turn OFF to stop forcing WalkSpeed.",
+	function(enabled)
+		if enabled then
+			local character = LocalPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+			if humanoid then
+				local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+				Settings.WalkSpeed = value
+				humanoid.WalkSpeed = value
+				SystemLogEvent(string.format("Apply WalkSpeed enabled: %.1f", value))
+			else
+				SystemLogEvent("Apply WalkSpeed enabled, waiting for Humanoid.")
+			end
+		else
+			SystemLogEvent("Apply WalkSpeed disabled.")
+		end
+	end
+)
+
+AddDashboardButton(
+	UI.PlayerPage,
+	"Noclip",
+	"Noclip",
+	"Disables character collision while enabled.",
+	"Can also be toggled with the Noclip Toggle keybind.",
+	function(enabled)
+		if enabled then
+			NoclipSystem.Enable()
+			SystemLogEvent("Noclip enabled.")
+		else
+			NoclipSystem.Disable()
+			SystemLogEvent("Noclip disabled.")
+		end
+
+		UpdateLeftPanelShortcuts()
+	end
+)
+
+AddDashboardSlider(
+	UI.PlayerPage,
+	"NoclipSpeed",
+	"Noclip Speed",
+	5,
+	1000,
+	"Controls your movement speed while Noclip is enabled.",
+	"Range: 5 - 1000. Default: 30.",
+	function(value)
+		Settings.NoclipSpeed = math.clamp(value, 5, 1000)
+
+		if Settings.Noclip then
+			NoclipSystem.Apply()
+		end
+	end,
+	0
+)
+
 
 UI.CycleColorBtn = Instance.new("TextButton", UI.CustPage)
 UI.CycleColorBtn.Size = UDim2.new(0.94, 0, 0, 36)
@@ -4837,6 +5566,8 @@ end)
 AddKeybindControl(UI.KeybindPage, "AimKey", "Set Aimbot Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(UI.KeybindPage, "ToggleUiKey", "Set Menu Keybind", "Click the key frame, then press any keyboard key.")
 AddKeybindControl(UI.KeybindPage, "FarmInvisToggleKey", "Set Invisibility Toggle Keybind", "Toggles the R6 invisibility system on or off.")
+AddKeybindControl(UI.KeybindPage, "NoclipToggleKey", "Noclip Toggle", "Toggles Noclip on or off. Default key: U.")
+AddKeybindControl(UI.KeybindPage, "MouseUnlockKey", "Mouse Unlock Toggle", "Unlocks or restores the Roblox mouse. Default key: M.")
 
 -- PAGE 4: SETTINGS (Now Contains the Config Module)
 
@@ -4890,6 +5621,10 @@ local function FactoryResetSettings()
 	ControlClick(false)
 
 	UpdateFullbright(false)
+	NoclipSystem.Disable()
+	if UI.SetMouseUnlocked then
+		UI.SetMouseUnlocked(false)
+	end
 	Farm.Cleanup()
 	ResetMarkedPlayerSelection()
 	RefreshAllESP()
@@ -4939,6 +5674,20 @@ Instance.new("UICorner", UI.KillEngineBtn).CornerRadius = UDim.new(0, 6)
 HookButtonAnimations(UI.KillEngineBtn, Color3.fromRGB(45, 20, 25), Color3.fromRGB(60, 25, 30))
 
 UI.KillEngineBtn.MouseButton1Click:Connect(CinematicClose)
+
+
+SafeConnect(RunService.Heartbeat, function()
+	if not Settings.ApplyWalkSpeed or Settings.Noclip then return end
+
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	local value = math.clamp(tonumber(Settings.WalkSpeed) or 16, 0.1, 1000000)
+	if humanoid.WalkSpeed ~= value then
+		humanoid.WalkSpeed = value
+	end
+end)
 
 Compat.Log("BOOT", "Dashboard controls initialized")
 
