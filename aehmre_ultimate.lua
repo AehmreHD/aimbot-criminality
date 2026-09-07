@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - AXE 1 SECOND THEN TELEPORT ABILITY FULL FIX //
+-- // AEHMRE ULTIMATE HUB - NON STUDIO LATEST UI UPDATES //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -1844,7 +1844,7 @@ local Farm = (function()
 			FarmPanicActivatedInvisibility = false
 			FarmLog("PanicMode could not enable invisibility")
 		else
-			FarmLog("PanicMode triggered below 15 HP")
+			FarmLog("PanicMode triggered below 30 HP")
 		end
 
 		RefreshFarmInvisibilityUI()
@@ -1858,7 +1858,7 @@ local Farm = (function()
 		if not Settings.PanicMode or FarmPanicTriggeredForLife then return end
 		if not humanoid or humanoid.Health <= 0 then return end
 
-		if humanoid.Health < 15 then
+		if humanoid.Health < 30 then
 			TriggerFarmPanicInvisibility()
 		end
 	end
@@ -3599,8 +3599,32 @@ end
 local function ToggleMainMenu()
 	if not AccessNoticeDismissed or not UI.MainMenuUI then return end
 
+	if not UI.MainMenuUI.Visible then
+		UI.MainMenuUI.Visible = true
+		UI.IsMin = false
+
+		local container = UI.MainMenuUI:FindFirstChild("UI.WindowContainerFrame")
+
+		if container then
+			container.Visible = true
+		end
+
+		UI.MainMenuUI.Size = UDim2.new(0, 540, 0, 415)
+
+		if UI.MinimizeBtn then
+			UI.MinimizeBtn.Text = "—"
+		end
+
+		if UI.HideInterfaceClosedNotice then
+			UI.HideInterfaceClosedNotice(true)
+		end
+
+		UpdateMobileControlButtons()
+		return
+	end
+
 	if IsTouchDevice then
-		UI.MainMenuUI.Visible = not UI.MainMenuUI.Visible
+		UI.MainMenuUI.Visible = false
 		UpdateMobileControlButtons()
 		return
 	end
@@ -3732,6 +3756,124 @@ UI.ScreenGui.Name = CurrentScriptID
 UI.ScreenGui.ResetOnSpawn = false
 UI.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 UI.ScreenGui.DisplayOrder = 999999
+
+UI.InterfaceClosedNotice = Instance.new("Frame", UI.ScreenGui)
+UI.InterfaceClosedNotice.Name = "InterfaceClosedNotice"
+UI.InterfaceClosedNotice.AnchorPoint = Vector2.new(1, 1)
+UI.InterfaceClosedNotice.Size = UDim2.fromOffset(335, 72)
+UI.InterfaceClosedNotice.Position = UDim2.new(1, 360, 1, -18)
+UI.InterfaceClosedNotice.BackgroundColor3 = Color3.fromRGB(15, 16, 21)
+UI.InterfaceClosedNotice.BorderSizePixel = 0
+UI.InterfaceClosedNotice.Visible = false
+UI.InterfaceClosedNotice.ZIndex = 100
+Instance.new("UICorner", UI.InterfaceClosedNotice).CornerRadius = UDim.new(0, 8)
+
+UI.InterfaceClosedNoticeStroke = Instance.new("UIStroke", UI.InterfaceClosedNotice)
+UI.InterfaceClosedNoticeStroke.Color = Color3.fromRGB(70, 235, 120)
+UI.InterfaceClosedNoticeStroke.Thickness = 1.5
+
+UI.InterfaceClosedNoticeClose = Instance.new("TextButton", UI.InterfaceClosedNotice)
+UI.InterfaceClosedNoticeClose.Name = "Close"
+UI.InterfaceClosedNoticeClose.Size = UDim2.fromOffset(22, 22)
+UI.InterfaceClosedNoticeClose.Position = UDim2.fromOffset(7, 7)
+UI.InterfaceClosedNoticeClose.BackgroundColor3 = Color3.fromRGB(38, 24, 28)
+UI.InterfaceClosedNoticeClose.BorderSizePixel = 0
+UI.InterfaceClosedNoticeClose.Text = "X"
+UI.InterfaceClosedNoticeClose.TextColor3 = Color3.fromRGB(245, 95, 105)
+UI.InterfaceClosedNoticeClose.TextSize = 10
+UI.InterfaceClosedNoticeClose.Font = Enum.Font.GothamBold
+UI.InterfaceClosedNoticeClose.AutoButtonColor = false
+UI.InterfaceClosedNoticeClose.ZIndex = 102
+Instance.new("UICorner", UI.InterfaceClosedNoticeClose).CornerRadius = UDim.new(0, 5)
+
+UI.InterfaceClosedNoticeText = Instance.new("TextLabel", UI.InterfaceClosedNotice)
+UI.InterfaceClosedNoticeText.Name = "Message"
+UI.InterfaceClosedNoticeText.Size = UDim2.new(1, -44, 1, -14)
+UI.InterfaceClosedNoticeText.Position = UDim2.fromOffset(38, 7)
+UI.InterfaceClosedNoticeText.BackgroundTransparency = 1
+UI.InterfaceClosedNoticeText.Text = ""
+UI.InterfaceClosedNoticeText.TextColor3 = Styles.TextMain
+UI.InterfaceClosedNoticeText.TextSize = 11
+UI.InterfaceClosedNoticeText.TextWrapped = true
+UI.InterfaceClosedNoticeText.TextXAlignment = Enum.TextXAlignment.Left
+UI.InterfaceClosedNoticeText.TextYAlignment = Enum.TextYAlignment.Center
+UI.InterfaceClosedNoticeText.Font = Enum.Font.GothamSemibold
+UI.InterfaceClosedNoticeText.ZIndex = 101
+
+UI.InterfaceClosedNoticeToken = 0
+
+UI.HideInterfaceClosedNotice = function(instant)
+	UI.InterfaceClosedNoticeToken += 1
+
+	if not UI.InterfaceClosedNotice or not UI.InterfaceClosedNotice.Parent then
+		return
+	end
+
+	if instant then
+		UI.InterfaceClosedNotice.Visible = false
+		UI.InterfaceClosedNotice.Position = UDim2.new(1, 360, 1, -18)
+		return
+	end
+
+	local hideTween = TweenObj(
+		UI.InterfaceClosedNotice,
+		{ Position = UDim2.new(1, 360, 1, -18) },
+		0.22,
+		Enum.EasingStyle.Quint,
+		Enum.EasingDirection.In
+	)
+
+	local token = UI.InterfaceClosedNoticeToken
+
+	task.spawn(function()
+		hideTween.Completed:Wait()
+
+		if UI.InterfaceClosedNotice
+			and UI.InterfaceClosedNotice.Parent
+			and UI.InterfaceClosedNoticeToken == token then
+			UI.InterfaceClosedNotice.Visible = false
+		end
+	end)
+end
+
+UI.ShowInterfaceClosedNotice = function()
+	if not UI.InterfaceClosedNotice or not UI.InterfaceClosedNotice.Parent then
+		return
+	end
+
+	UI.InterfaceClosedNoticeToken += 1
+	local token = UI.InterfaceClosedNoticeToken
+	local keyName = GetKeybindName(Settings.ToggleUiKey)
+
+	UI.InterfaceClosedNoticeText.Text = 'The Interface is closed. You can open it with: "' .. keyName .. '".'
+	UI.InterfaceClosedNotice.Position = UDim2.new(1, 360, 1, -18)
+	UI.InterfaceClosedNotice.Visible = true
+
+	TweenObj(
+		UI.InterfaceClosedNotice,
+		{ Position = UDim2.new(1, -18, 1, -18) },
+		0.28,
+		Enum.EasingStyle.Quint
+	)
+
+	task.delay(4, function()
+		if UI.InterfaceClosedNotice
+			and UI.InterfaceClosedNotice.Parent
+			and UI.InterfaceClosedNoticeToken == token then
+			UI.HideInterfaceClosedNotice(false)
+		end
+	end)
+end
+
+UI.InterfaceClosedNoticeClose.MouseButton1Click:Connect(function()
+	UI.HideInterfaceClosedNotice(false)
+end)
+
+HookButtonAnimations(
+	UI.InterfaceClosedNoticeClose,
+	Color3.fromRGB(38, 24, 28),
+	Color3.fromRGB(55, 28, 34)
+)
 
 OffscreenOverlay = Instance.new("Frame", UI.ScreenGui)
 OffscreenOverlay.Name = "OffscreenWarningOverlay"
@@ -4157,14 +4299,72 @@ UI.Title.TextXAlignment = Enum.TextXAlignment.Left
 
 UI.SubTitle = Instance.new("TextLabel", UI.HeaderBar)
 UI.SubTitle.Name = "CreatorTag"
-UI.SubTitle.Size = UDim2.new(0.4, 0, 1, 0)
-UI.SubTitle.Position = UDim2.new(0.32, 0, 0, 0) 
+UI.SubTitle.Size = UDim2.new(0, 145, 1, 0)
+UI.SubTitle.Position = UDim2.new(0.32, 0, 0, 0)
 UI.SubTitle.BackgroundTransparency = 1
 UI.SubTitle.TextColor3 = Styles.Accent
 UI.SubTitle.Text = "Made by @Emre_31er"
 UI.SubTitle.TextSize = 11
 UI.SubTitle.Font = Enum.Font.Arimo
 UI.SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+UI.ModeButtons = {}
+UI.CurrentHubMode = "All"
+
+UI.CriminalityModeButton = Instance.new("TextButton", UI.HeaderBar)
+UI.CriminalityModeButton.Name = "CriminalityModeButton"
+UI.CriminalityModeButton.Size = UDim2.new(0, 84, 0, 22)
+UI.CriminalityModeButton.Position = UDim2.new(1, -205, 0.5, -11)
+UI.CriminalityModeButton.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+UI.CriminalityModeButton.BorderSizePixel = 0
+UI.CriminalityModeButton.Text = "CRIMINALITY"
+UI.CriminalityModeButton.TextColor3 = Styles.TextDark
+UI.CriminalityModeButton.TextSize = 9
+UI.CriminalityModeButton.Font = Enum.Font.GothamBold
+UI.CriminalityModeButton.AutoButtonColor = false
+Instance.new("UICorner", UI.CriminalityModeButton).CornerRadius = UDim.new(0, 5)
+
+UI.CriminalityModeStroke = Instance.new("UIStroke", UI.CriminalityModeButton)
+ApplyPaletteStroke(UI.CriminalityModeStroke, 1)
+UI.CriminalityModeStroke.Thickness = 1
+
+UI.AllModeButton = Instance.new("TextButton", UI.HeaderBar)
+UI.AllModeButton.Name = "AllModeButton"
+UI.AllModeButton.Size = UDim2.new(0, 44, 0, 22)
+UI.AllModeButton.Position = UDim2.new(1, -116, 0.5, -11)
+UI.AllModeButton.BackgroundColor3 = Styles.Accent
+UI.AllModeButton.BorderSizePixel = 0
+UI.AllModeButton.Text = "All"
+UI.AllModeButton.TextColor3 = Color3.fromRGB(10, 10, 12)
+UI.AllModeButton.TextSize = 9
+UI.AllModeButton.Font = Enum.Font.GothamBold
+UI.AllModeButton.AutoButtonColor = false
+Instance.new("UICorner", UI.AllModeButton).CornerRadius = UDim.new(0, 5)
+
+UI.AllModeStroke = Instance.new("UIStroke", UI.AllModeButton)
+ApplyPaletteStroke(UI.AllModeStroke, 3)
+UI.AllModeStroke.Thickness = 1
+
+UI.ModeButtons.Criminality = UI.CriminalityModeButton
+UI.ModeButtons.All = UI.AllModeButton
+
+UI.CriminalityModeButton.MouseEnter:Connect(function()
+	TweenObj(UI.CriminalityModeButton, { BackgroundColor3 = Color3.fromRGB(38, 40, 49) }, 0.15)
+end)
+
+UI.CriminalityModeButton.MouseLeave:Connect(function()
+	local selected = UI.CurrentHubMode == "Criminality"
+	TweenObj(UI.CriminalityModeButton, { BackgroundColor3 = selected and Styles.Accent or Color3.fromRGB(30, 32, 40) }, 0.15)
+end)
+
+UI.AllModeButton.MouseEnter:Connect(function()
+	TweenObj(UI.AllModeButton, { BackgroundColor3 = Color3.fromRGB(38, 40, 49) }, 0.15)
+end)
+
+UI.AllModeButton.MouseLeave:Connect(function()
+	local selected = UI.CurrentHubMode == "All"
+	TweenObj(UI.AllModeButton, { BackgroundColor3 = selected and Styles.Accent or Color3.fromRGB(30, 32, 40) }, 0.15)
+end)
 
 local HeaderControlSize = IsTouchDevice and 30 or 20
 local HeaderControlHalf = HeaderControlSize * 0.5
@@ -4287,18 +4487,22 @@ UI.ShortcutList.TextColor3 = Styles.TextDark
 UI.ShortcutList.TextXAlignment = Enum.TextXAlignment.Left
 UpdateLeftPanelShortcuts()
 
-UI.SystemStatusBtn = Instance.new("TextButton", UI.Sidebar)
-UI.SystemStatusBtn.Size = UDim2.new(0.84, 0, 0, 32)
-UI.SystemStatusBtn.Position = UDim2.new(0.08, 0, 1, -38)
-UI.SystemStatusBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-UI.SystemStatusBtn.Font = Enum.Font.GothamBold
-UI.SystemStatusBtn.Text = "SYSTEM WORKING"
-UI.SystemStatusBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-UI.SystemStatusBtn.TextSize = 10
-UI.SystemStatusBtn.BorderSizePixel = 0
-UI.SystemStatusBtn.AutoButtonColor = false
-Instance.new("UICorner", UI.SystemStatusBtn).CornerRadius = UDim.new(0, 6)
-HookButtonAnimations(UI.SystemStatusBtn, Color3.fromRGB(255, 255, 255), Color3.fromRGB(225, 225, 230))
+UI.CurrentMainTabLabel = Instance.new("TextLabel", UI.Sidebar)
+UI.CurrentMainTabLabel.Name = "CurrentMainTabLabel"
+UI.CurrentMainTabLabel.Size = UDim2.new(0.84, 0, 0, 32)
+UI.CurrentMainTabLabel.Position = UDim2.new(0.08, 0, 1, -38)
+UI.CurrentMainTabLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+UI.CurrentMainTabLabel.BorderSizePixel = 0
+UI.CurrentMainTabLabel.Font = Enum.Font.GothamBold
+UI.CurrentMainTabLabel.Text = "CURRENT MAIN TAB: ALL"
+UI.CurrentMainTabLabel.TextColor3 = Styles.TextMain
+UI.CurrentMainTabLabel.TextSize = 9
+UI.CurrentMainTabLabel.TextWrapped = true
+Instance.new("UICorner", UI.CurrentMainTabLabel).CornerRadius = UDim.new(0, 6)
+
+UI.CurrentMainTabStroke = Instance.new("UIStroke", UI.CurrentMainTabLabel)
+UI.CurrentMainTabStroke.Color = Color3.fromRGB(58, 77, 248)
+UI.CurrentMainTabStroke.Thickness = 0.5
 
 UI.SearchBarFrame = Instance.new("Frame", UI.RightContentWindow)
 UI.SearchBarFrame.Size = UDim2.new(0.94, 0, 0, 30)
@@ -4385,7 +4589,17 @@ local function RegisterTabContainerPage(tabName)
 		IndicatorStrip.Visible = true
 	end)
 
-	UI.Tabs[tabName] = {Page = PageFrame, Btn = TabBtn}
+	local modes = {
+		All = tabName ~= "Farm",
+		Criminality = tabName ~= "Player / Character"
+	}
+
+	UI.Tabs[tabName] = {
+		Page = PageFrame,
+		Btn = TabBtn,
+		Modes = modes
+	}
+
 	return PageFrame
 end
 
@@ -4399,6 +4613,132 @@ UI.FarmPage = RegisterTabContainerPage("Farm")
 UI.PlayerPage = RegisterTabContainerPage("Player / Character")
 UI.DevPage = RegisterTabContainerPage("Developer")
 UI.SettPage = RegisterTabContainerPage("Settings")
+
+local function SelectFirstVisibleHubTab()
+	local preferredOrder = {
+		"Aim Lock",
+		"Visuals / ESP",
+		"System Logs",
+		"Customization",
+		"Keybinds",
+		"Lighting & Enviroment",
+		"Farm",
+		"Player / Character",
+		"Developer",
+		"Settings"
+	}
+
+	for _, tabName in ipairs(preferredOrder) do
+		local tabData = UI.Tabs[tabName]
+
+		if tabData and tabData.Btn.Visible then
+			for _, otherData in pairs(UI.Tabs) do
+				otherData.Page.Visible = false
+				otherData.Btn.BackgroundTransparency = 1
+				otherData.Btn.IndicatorStrip.Visible = false
+				otherData.Btn.TextColor3 = Styles.TextDark
+			end
+
+			tabData.Page.Visible = true
+			tabData.Btn.TextColor3 = Styles.TextMain
+			tabData.Btn.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
+			tabData.Btn.BackgroundTransparency = 0
+			tabData.Btn.IndicatorStrip.Visible = true
+			return
+		end
+	end
+end
+
+local function UpdateHubModeButtons()
+	local criminalitySelected = UI.CurrentHubMode == "Criminality"
+	local allSelected = UI.CurrentHubMode == "All"
+	local selectedBorder = Color3.fromRGB(70, 235, 120)
+	local idleBorder = Color3.fromRGB(55, 58, 68)
+
+	TweenObj(
+		UI.CriminalityModeButton,
+		{
+			BackgroundColor3 = criminalitySelected and Styles.Accent or Color3.fromRGB(30, 32, 40),
+			TextColor3 = criminalitySelected and Color3.fromRGB(10, 10, 12) or Styles.TextDark
+		},
+		0.18
+	)
+
+	TweenObj(
+		UI.AllModeButton,
+		{
+			BackgroundColor3 = allSelected and Styles.Accent or Color3.fromRGB(30, 32, 40),
+			TextColor3 = allSelected and Color3.fromRGB(10, 10, 12) or Styles.TextDark
+		},
+		0.18
+	)
+
+	UI.CriminalityModeStroke.Color = criminalitySelected and selectedBorder or idleBorder
+	UI.AllModeStroke.Color = allSelected and selectedBorder or idleBorder
+	UI.CriminalityModeStroke.Thickness = criminalitySelected and 2 or 1
+	UI.AllModeStroke.Thickness = allSelected and 2 or 1
+
+	if UI.CurrentMainTabLabel then
+		UI.CurrentMainTabLabel.Text = "CURRENT MAIN TAB: " .. string.upper(UI.CurrentHubMode)
+	end
+end
+
+local function UpdateHubModeFeatureVisibility(mode)
+	for _, tabData in pairs(UI.Tabs) do
+		for _, object in ipairs(tabData.Page:GetChildren()) do
+			local requiredMode = object:GetAttribute("AehmreMainMode")
+
+			if requiredMode then
+				object.Visible = requiredMode == mode
+			end
+		end
+	end
+end
+
+local function SetHubMode(mode)
+	if mode ~= "All" and mode ~= "Criminality" then
+		return
+	end
+
+	UI.CurrentHubMode = mode
+	local activePageHidden = false
+
+	for _, tabData in pairs(UI.Tabs) do
+		local allowed = tabData.Modes and tabData.Modes[mode] == true
+
+		if tabData.Page.Visible and not allowed then
+			activePageHidden = true
+		end
+
+		tabData.Btn.Visible = allowed
+
+		if not allowed then
+			tabData.Page.Visible = false
+			tabData.Btn.BackgroundTransparency = 1
+			tabData.Btn.IndicatorStrip.Visible = false
+		end
+	end
+
+	if activePageHidden then
+		SelectFirstVisibleHubTab()
+	end
+
+	UpdateHubModeFeatureVisibility(mode)
+	UpdateHubModeButtons()
+	SystemLogEvent("Hub mode changed to " .. mode .. ".")
+end
+
+UI.CriminalityModeButton.MouseButton1Click:Connect(function()
+	SetHubMode("Criminality")
+end)
+
+UI.AllModeButton.MouseButton1Click:Connect(function()
+	SetHubMode("All")
+end)
+
+if UI.CurrentMainTabLabel then
+	UI.CurrentMainTabLabel.Text = "CURRENT MAIN TAB: " .. string.upper(UI.CurrentHubMode or "All")
+end
 
 UI.SystemLogEntries = {}
 
@@ -4450,6 +4790,7 @@ UI.Tabs["Aim Lock"].Btn.TextColor3 = Styles.TextMain
 UI.Tabs["Aim Lock"].Btn.BackgroundColor3 = Color3.fromRGB(26, 27, 35)
 UI.Tabs["Aim Lock"].Btn.BackgroundTransparency = 0
 UI.Tabs["Aim Lock"].Btn.IndicatorStrip.Visible = true
+SetHubMode("All")
 
 UI.IsMin = false
 UI.MinimizeBtn.MouseButton1Click:Connect(function()
@@ -4469,19 +4810,39 @@ UI.MinimizeBtn.MouseButton1Click:Connect(function()
 	UpdateMobileControlButtons()
 end)
 
+local function SoftCloseInterface()
+	if not UI.MainFrame or not UI.MainFrame.Visible then
+		return
+	end
+
+	UI.MainFrame.Visible = false
+
+	if UI.ShowInterfaceClosedNotice then
+		UI.ShowInterfaceClosedNotice()
+	end
+
+	UpdateMobileControlButtons()
+	SystemLogEvent("Interface closed. Runtime systems remain active.")
+end
+
 local function CinematicClose()
+	if UI.HideInterfaceClosedNotice then
+		UI.HideInterfaceClosedNotice(true)
+	end
+
 	TweenObj(UI.MainStroke, { Transparency = 1 }, 0.15)
-	local closeTween = TweenObj(UI.MainFrame, { 
-		Size = UDim2.new(0, 540, 0, 0), 
-		Position = UI.MainFrame.Position + UDim2.new(0, 0, 0, 207.5), 
-		BackgroundTransparency = 1 
+	local closeTween = TweenObj(UI.MainFrame, {
+		Size = UDim2.new(0, 540, 0, 0),
+		Position = UI.MainFrame.Position + UDim2.new(0, 0, 0, 207.5),
+		BackgroundTransparency = 1
 	}, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 	closeTween.Completed:Wait()
-	env[CurrentScriptID] = nil 
-	env[CurrentScriptID .. "_DataPacket"] = nil 
+	env[CurrentScriptID] = nil
+	env[CurrentScriptID .. "_DataPacket"] = nil
 	UniversalDestruct()
 end
-UI.CloseBtn.MouseButton1Click:Connect(CinematicClose)
+
+UI.CloseBtn.MouseButton1Click:Connect(SoftCloseInterface)
 
 Compat.Log("BOOT", "Main UI structure initialized")
 
@@ -4490,6 +4851,12 @@ local function AddDashboardButton(parentPage, configKey, displayTitle, desc, sub
 
 	local Card = Instance.new("Frame", parentPage)
 	Card.Size = UDim2.new(0.94, 0, 0, 56)
+
+	if configKey == "KillMarkedWithFireAxe" or configKey == "FarmSafeESP" then
+		Card:SetAttribute("AehmreMainMode", "Criminality")
+		Card.Visible = UI.CurrentHubMode == "Criminality"
+	end
+
 	Card.BackgroundColor3 = Styles.CardBg
 	Card.BorderSizePixel = 0
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
@@ -4666,15 +5033,35 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 
 	local Card = Instance.new("Frame", parentPage)
 	Card.Size = UDim2.new(0.94, 0, 0, 68)
+
+	if configKey == "FarmESPTextSize" then
+		Card:SetAttribute("AehmreMainMode", "Criminality")
+		Card.Visible = UI.CurrentHubMode == "Criminality"
+	end
+
 	Card.BackgroundColor3 = Styles.CardBg
 	Card.BorderSizePixel = 0
 	Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
 	local Stroke = Instance.new("UIStroke", Card)
 	ApplyPaletteStroke(Stroke)
 
-	local TitleLabel = Instance.new("TextLabel", Card)
-	TitleLabel.Size = UDim2.new(0.7, 0, 0, 16)
-	TitleLabel.Position = UDim2.new(0.03, 0, 0.06, 0)
+	local HeaderRow = Instance.new("Frame", Card)
+	HeaderRow.Size = UDim2.new(0.94, 0, 0, 16)
+	HeaderRow.Position = UDim2.new(0.03, 0, 0.06, 0)
+	HeaderRow.BackgroundTransparency = 1
+	HeaderRow.BorderSizePixel = 0
+
+	local HeaderLayout = Instance.new("UIListLayout", HeaderRow)
+	HeaderLayout.FillDirection = Enum.FillDirection.Horizontal
+	HeaderLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	HeaderLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	HeaderLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	HeaderLayout.Padding = UDim.new(0, 7)
+
+	local TitleLabel = Instance.new("TextLabel", HeaderRow)
+	TitleLabel.Size = UDim2.new(0, 0, 1, 0)
+	TitleLabel.AutomaticSize = Enum.AutomaticSize.X
+	TitleLabel.LayoutOrder = 1
 	TitleLabel.BackgroundTransparency = 1
 	TitleLabel.Text = displayTitle
 	TitleLabel.Font = Enum.Font.GothamSemibold
@@ -4682,9 +5069,10 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	TitleLabel.TextColor3 = Styles.TextMain
 	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	local ValLabel = Instance.new("TextLabel", Card)
-	ValLabel.Size = UDim2.new(0.2, 0, 0, 16)
-	ValLabel.Position = UDim2.new(0.97, -40, 0.06, 0)
+	local ValLabel = Instance.new("TextLabel", HeaderRow)
+	ValLabel.Size = UDim2.new(0, 0, 1, 0)
+	ValLabel.AutomaticSize = Enum.AutomaticSize.X
+	ValLabel.LayoutOrder = 2
 	ValLabel.BackgroundTransparency = 1
 
 	if decimalPlaces then
@@ -4700,7 +5088,7 @@ local function AddDashboardSlider(parentPage, configKey, displayTitle, min, max,
 	ValLabel.Font = Enum.Font.GothamBold
 	ValLabel.TextSize = 11
 	ValLabel.TextColor3 = Styles.Accent
-	ValLabel.TextXAlignment = Enum.TextXAlignment.Right
+	ValLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local DescLabel = Instance.new("TextLabel", Card)
 	DescLabel.Size = UDim2.new(0.9, 0, 0, 12)
@@ -5306,7 +5694,7 @@ end)
 
 AddMarkedPlayerDropdown(UI.VisPage)
 
-AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Kill Marked Player with Axe / Sledgehammer", "Waits 1 second after activation, then equips the tool, teleports into the marked player's HumanoidRootPart and activates it.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
+AddDashboardButton(UI.VisPage, "KillMarkedWithFireAxe", "Use Axe / Sledgehammer on Marked Player", "Waits 1 second after activation, then equips the tool, teleports into the marked player's HumanoidRootPart and activates it.", "Requires a marked player. Supports Fire Axe and Sledgehammer. Runs once, then switches OFF.", function(enabled)
 	if enabled then
 		task.spawn(KillMarkedPlayerWithFireAxe)
 	end
@@ -5371,7 +5759,7 @@ AddDashboardSlider(UI.FarmPage, "ExploitSimDamageAmount", "Exploit Sim Damage", 
 	Settings.ExploitSimDamageAmount = math.floor(value + 0.5)
 end, 0)
 
-AddDashboardButton(UI.FarmPage, "PanicMode", "PanicMode", "Automatically enables the selected Invisibility Mode when your health drops below 15 HP.", "Triggers once per life. Invisibility stays enabled until you disable it manually or respawn.", function(enabled)
+AddDashboardButton(UI.FarmPage, "PanicMode", "PanicMode", "Automatically enables the selected Invisibility Mode when your health drops below 30 HP.", "Triggers once per life. Invisibility stays enabled until you disable it manually or respawn.", function(enabled)
 	if enabled then
 		Farm.EnablePanicMode()
 	else
@@ -5542,10 +5930,10 @@ UI.CycleColorBtn.MouseButton1Click:Connect(function()
 	TargetInfoText.Color = currentAccent
 	UI.SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(UI.CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(UI.SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(UI.ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
 	TweenObj(UI.ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(UI.SubTitle, { TextColor3 = currentAccent }, 0.25)
+UpdateHubModeButtons()
 	for _, tData in pairs(UI.Tabs) do
 		tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
 		tData.Page.ScrollBarImageColor3 = currentAccent
@@ -5643,16 +6031,17 @@ local function FactoryResetSettings()
 	TargetInfoText.Color = currentAccent
 	UI.SidebarContainer.ScrollBarImageColor3 = currentAccent
 	TweenObj(UI.CycleStroke, { Color = currentAccent }, 0.25)
-	TweenObj(UI.SystemStatusBtn, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(UI.ActiveDotLabel, { TextColor3 = Color3.fromRGB(70, 235, 120) }, 0.25)
 	TweenObj(UI.ShortcutTitle, { TextColor3 = Color3.fromRGB(255, 255, 255) }, 0.25)
 	TweenObj(UI.SubTitle, { TextColor3 = currentAccent }, 0.25)
+UpdateHubModeButtons()
 
 	for _, tData in pairs(UI.Tabs) do
 		tData.Btn.IndicatorStrip.BackgroundColor3 = currentAccent
 		tData.Page.ScrollBarImageColor3 = currentAccent
 	end
 
+	SetHubMode(UI.CurrentHubMode or "All")
 	UpdateKeybindValueButtons()
 	UpdateLeftPanelShortcuts()
 end
