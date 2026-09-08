@@ -21,7 +21,7 @@ if typeof(env) ~= "table" then
 end
 local SavedState = nil
 
-local DiscordInvite = "https://discord.gg/hjjrsKJ8AA"
+local DiscordInvite = "https://discord.gg/GqjRyhM8Sk"
 local AccessNoticeDismissed = false
 
 
