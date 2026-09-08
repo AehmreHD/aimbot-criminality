@@ -1,4 +1,4 @@
--- // AEHMRE ULTIMATE HUB - EXPLOIT SIM CLIENT ONLY //
+-- // AEHMRE ULTIMATE HUB - CLIENT ONLY FREEZE FIX //
 -- MADE BY: Emre_31er
 local Lighting = game:GetService("Lighting")
 
@@ -1700,10 +1700,35 @@ for _, player in ipairs(Players:GetPlayers()) do
 	SetupESPPlayer(player)
 end
 
-for _, descendant in ipairs(workspace:GetDescendants()) do
-	if descendant:IsA("Humanoid") then
-		TryRegisterNPCFromInstance(descendant)
+local NPCInitialScanRunning = false
+
+local function ScanExistingNPCsAsync()
+	if NPCInitialScanRunning or not Settings.DetectNPCs then
+		return
 	end
+
+	NPCInitialScanRunning = true
+
+	task.spawn(function()
+		local descendants = workspace:GetDescendants()
+
+		for index, descendant in ipairs(descendants) do
+			if not Settings.DetectNPCs then
+				break
+			end
+
+			if descendant:IsA("Humanoid") then
+				TryRegisterNPCFromInstance(descendant)
+			end
+
+			if index % 100 == 0 then
+				task.wait()
+			end
+		end
+
+		NPCInitialScanRunning = false
+		RefreshAllESP()
+	end)
 end
 
 SafeConnect(Players.PlayerAdded, function(player)
@@ -3710,7 +3735,7 @@ UI.Title.Size = UDim2.new(0.3, 0, 1, 0)
 UI.Title.Position = UDim2.new(0.03, 0, 0, 0)
 UI.Title.BackgroundTransparency = 1
 UI.Title.TextColor3 = Styles.TextMain
-UI.Title.Text = "Aehmre Ultimate Hub [EXPLOIT SIM CLIENT]"
+UI.Title.Text = "Aehmre Ultimate Hub"
 UI.Title.TextSize = 13
 UI.Title.Font = Enum.Font.GothamBold
 UI.Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -5078,9 +5103,14 @@ AddDashboardButton(UI.AimPage, "DetectPlayers", "Detect Players", "Target Detect
 	Target = nil
 	RefreshAllESP()
 end)
-AddDashboardButton(UI.AimPage, "DetectNPCs", "Detect NPCs", "Target Detection: NPC Humanoids", "Allows Aim Lock and ESP to detect NPC models with a Humanoid.", function()
+AddDashboardButton(UI.AimPage, "DetectNPCs", "Detect NPCs", "Target Detection: NPC Humanoids", "Allows Aim Lock and ESP to detect NPC models with a Humanoid.", function(enabled)
 	Target = nil
-	RefreshAllESP()
+
+	if enabled then
+		ScanExistingNPCsAsync()
+	else
+		RefreshAllESP()
+	end
 end)
 AddDashboardButton(UI.AimPage, "WallCheck", "Raycast Wall Protection", "★ Optimal Placement: Critical Layer Protection", "Prevents engine cross-snapping onto targets located behind solid structures.")
 AddDashboardButton(UI.AimPage, "AutoShoot", "Auto-Trigger Mechanism", "★ Optimal Placement: Micro-Weapons Testing Engine", "Automatically handles tool activation parameters during tracking.")
